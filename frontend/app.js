@@ -14,6 +14,24 @@ const searchBtn = document.getElementById('searchBtn');
 
 let myName = null;
 
+// avatar color by username
+function hashStringToColor(str) {
+  if (!str) return '#cccccc';
+  // simple djb2 hash
+  let h = 5381;
+  for (let i = 0; i < str.length; i++) {
+    h = ((h << 5) + h) + str.charCodeAt(i); /* h * 33 + c */
+    h = h & h;
+  }
+  const colors = [
+    '#f44336','#e91e63','#9c27b0','#673ab7','#3f51b5','#2196f3','#03a9f4','#00bcd4',
+    '#009688','#4caf50','#8bc34a','#cddc39','#ffeb3b','#ffc107','#ff9800','#ff5722',
+    '#795548','#607d8b'
+  ];
+  const idx = Math.abs(h) % colors.length;
+  return colors[idx];
+}
+
 // Browser notification helpers
 function requestNotificationPermission() {
   if (!('Notification' in window)) return;
@@ -69,8 +87,25 @@ function esc(s) { return String(s || '').replace(/</g,'&lt;').replace(/>/g,'&gt;
 
 function addMessage(m) {
   const el = document.createElement('div');
-  el.className = 'message';
-  el.innerHTML = `<div class="meta"><strong>${esc(m.user)}</strong> <span class="ts">${new Date(m.ts).toLocaleTimeString()}</span></div><div class="text">${esc(m.text)}</div>`;
+  // mark message as from me or other
+  const cls = (m.user === myName) ? 'message me' : 'message other';
+  el.className = cls;
+  // bubble layout: avatar + bubble
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar';
+  avatar.textContent = (m.user || '?').slice(0,1);
+  avatar.title = m.user || '';
+  avatar.style.backgroundColor = hashStringToColor(m.user || '');
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.innerHTML = `<div class="meta"><strong>${esc(m.user)}</strong> <span class="ts">${new Date(m.ts).toLocaleTimeString()}</span></div><div class="text">${esc(m.text)}</div>`;
+  if (m.user === myName) {
+    el.appendChild(bubble);
+    el.appendChild(avatar);
+  } else {
+    el.appendChild(avatar);
+    el.appendChild(bubble);
+  }
   messagesEl.appendChild(el);
   // auto-scroll only if near bottom
   const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 100;
@@ -80,8 +115,23 @@ function addMessage(m) {
 // insertMessageAtTop used when loading older messages
 function insertMessageAtTop(m) {
   const el = document.createElement('div');
-  el.className = 'message';
-  el.innerHTML = `<div class="meta"><strong>${esc(m.user)}</strong> <span class="ts">${new Date(m.ts).toLocaleTimeString()}</span></div><div class="text">${esc(m.text)}</div>`;
+  const cls = (m.user === myName) ? 'message me' : 'message other';
+  el.className = cls;
+  const avatar = document.createElement('div');
+  avatar.className = 'avatar';
+  avatar.textContent = (m.user || '?').slice(0,1);
+  avatar.title = m.user || '';
+  avatar.style.backgroundColor = hashStringToColor(m.user || '');
+  const bubble = document.createElement('div');
+  bubble.className = 'bubble';
+  bubble.innerHTML = `<div class="meta"><strong>${esc(m.user)}</strong> <span class="ts">${new Date(m.ts).toLocaleTimeString()}</span></div><div class="text">${esc(m.text)}</div>`;
+  if (m.user === myName) {
+    el.appendChild(bubble);
+    el.appendChild(avatar);
+  } else {
+    el.appendChild(avatar);
+    el.appendChild(bubble);
+  }
   messagesEl.insertBefore(el, messagesEl.firstChild);
 }
 

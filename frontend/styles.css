@@ -15,6 +15,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helv
 .message .meta { color:#444; font-size:13px; }
 .message .text { margin-top:4px; font-size:15px; }
 
+/* message bubble styles */
+.message { display:flex; align-items:flex-end; gap:8px; }
+.message .avatar { width:32px; height:32px; border-radius:50%; background:#ddd; display:flex; align-items:center; justify-content:center; font-weight:700; color:#333; }
+.message .bubble { max-width:70%; padding:8px 10px; border-radius:12px; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,0.06); }
+.message.me { justify-content:flex-end; }
+.message.me .bubble { background:#dcf8c6; text-align:right; }
+.message.me .avatar { order:2; }
+.message.other { justify-content:flex-start; }
+.message.other .bubble { background:#fff; }
+
+
 .notification { position:fixed; top:20px; right:20px; background:#222; color:#fff; padding:8px 12px; border-radius:6px; opacity:0.95; z-index:9999; }
 
 #loadMoreBtn { font-size:13px; }
