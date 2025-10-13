@@ -20,3 +20,8 @@ npm start
 ```
 
 3. 在浏览器打开 `http://localhost:3000`，可同时打开多个窗口模拟多人聊天室。
+
+更新:
+
+1. git clone最新的master分支
+2. 执行update.sh
