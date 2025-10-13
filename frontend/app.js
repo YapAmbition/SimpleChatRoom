@@ -14,6 +14,49 @@ const searchBtn = document.getElementById('searchBtn');
 
 let myName = null;
 
+// Browser notification helpers
+function requestNotificationPermission() {
+  if (!('Notification' in window)) return;
+  if (Notification.permission === 'default') {
+    try { Notification.requestPermission(); } catch (e) { /* ignore */ }
+  }
+}
+
+function notifyBrowserMessage(m) {
+  try {
+    if (!('Notification' in window)) return;
+    if (Notification.permission !== 'granted') return;
+    if (!m || !m.user) return;
+    // do not notify for our own messages
+    if (m.user === myName) return;
+    // Only show notification when page not visible (optional behaviour)
+    if (!document.hidden) return;
+
+    const title = `${m.user} 发送了新消息`;
+    const body = (m.text || '').slice(0, 140);
+    const n = new Notification(title, { body, tag: m.id });
+    n.onclick = () => { window.focus(); n.close(); };
+  } catch (e) {
+    console.error('notifyBrowserMessage failed', e);
+  }
+}
+
+// Title unread marker
+const originalTitle = document.title || 'Chat';
+let hasUnread = false;
+function setUnreadTitle() {
+  if (hasUnread) return;
+  try { document.title = `【新消息】 ${originalTitle}`; hasUnread = true; } catch (e) { }
+}
+function clearUnreadTitle() {
+  if (!hasUnread) return;
+  try { document.title = originalTitle; hasUnread = false; } catch (e) { }
+}
+
+// Clear unread when user focuses or page becomes visible
+window.addEventListener('focus', clearUnreadTitle);
+document.addEventListener('visibilitychange', () => { if (!document.hidden) clearUnreadTitle(); });
+
 function notify(text, ms = 2500) {
   const n = document.createElement('div');
   n.className = 'notification';
@@ -50,6 +93,8 @@ loginBtn.addEventListener('click', () => {
       chatBox.classList.remove('hidden');
       meLabel.textContent = res.username;
       myName = res.username;
+      // request browser notification permission
+      requestNotificationPermission();
     }
   });
 });
@@ -62,6 +107,8 @@ sendBtn.addEventListener('click', () => {
   msgInput.focus();
   // force scroll to bottom after sending
   messagesEl.scrollTop = messagesEl.scrollHeight;
+  // clear unread title when we send
+  clearUnreadTitle();
 });
 
 msgInput.addEventListener('keyup', (e) => {
@@ -117,6 +164,10 @@ socket.on('history', (msgs) => {
 
 socket.on('message', (m) => {
   addMessage(m);
+  // show browser notification for messages from others
+  notifyBrowserMessage(m);
+  // if message is from other user and page is hidden, set unread title
+  if (m.user !== myName && document.hidden) setUnreadTitle();
 });
 
 socket.on('presence', (data) => {
