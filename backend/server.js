@@ -21,23 +21,8 @@ const io = new Server(server, {
 // list existing rooms
 app.get('/rooms', (req, res) => {
   try {
-    const roomsDir = path.join(DATA_DIR, 'rooms');
-    if (!fs.existsSync(roomsDir)) return res.json({ ok: true, rooms: [] });
-    const items = fs.readdirSync(roomsDir).filter(n => {
-      return fs.statSync(path.join(roomsDir, n)).isDirectory();
-    });
-    const rooms = items.map(dirName => {
-      try {
-        const metaFile = path.join(roomsDir, dirName, 'meta.json');
-        if (fs.existsSync(metaFile)) {
-          const meta = JSON.parse(fs.readFileSync(metaFile, 'utf8') || '{}');
-          const displayName = meta && meta.name ? meta.name : decodeDirName(dirName);
-          return { name: displayName, hasPassword: !!(meta && meta.hash), createdAt: meta && meta.createdAt ? meta.createdAt : null };
-        }
-      } catch (e) {}
-      // if no meta, try to decode dirName, fallback to dirName itself
-      return { name: decodeDirName(dirName), hasPassword: false, createdAt: null };
-    });
+    ensureRoomIndex();
+    const rooms = Object.values(ROOM_INDEX).map(ent => ({ name: ent.name, hasPassword: !!ent.hash, createdAt: ent.createdAt || null, id: ent.id }));
     res.json({ ok: true, rooms });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e) });
@@ -49,17 +34,10 @@ app.get('/room-exists', (req, res) => {
   try {
     const room = String(req.query.room || '').trim();
     if (!room) return res.json({ ok: false, exists: false });
-    const dir = getRoomDir(room);
-    const exists = fs.existsSync(dir);
-    let hasPassword = false;
-    try {
-      const metaFile = roomFile(room, 'meta.json');
-      if (fs.existsSync(metaFile)) {
-        const meta = JSON.parse(fs.readFileSync(metaFile, 'utf8') || '{}');
-        hasPassword = !!(meta && meta.hash);
-      }
-    } catch (e) { hasPassword = false; }
-    res.json({ ok: true, exists, hasPassword });
+    const ent = findRoomEntry(room);
+    if (!ent) return res.json({ ok: true, exists: false, hasPassword: false });
+    const hasPassword = !!(ent && (ent.hash || ent.salt));
+    res.json({ ok: true, exists: true, hasPassword });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e) });
   }
@@ -71,25 +49,8 @@ app.post('/rooms', express.json(), (req, res) => {
     const room = String((req.body && req.body.room) || '').trim();
     const password = String((req.body && req.body.password) || '').trim();
     if (!room) return res.status(400).json({ ok: false, error: 'room required' });
-    const dir = getRoomDir(room);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    // ensure files
-    const snap = path.join(dir, 'messages.json');
-    const log = path.join(dir, 'messages.log');
-    const idx = path.join(dir, 'archives.json');
-    if (!fs.existsSync(snap)) fs.writeFileSync(snap, '[]', 'utf8');
-    if (!fs.existsSync(log)) fs.writeFileSync(log, '', 'utf8');
-    if (!fs.existsSync(idx)) fs.writeFileSync(idx, '[]', 'utf8');
-    // write meta (always include name + createdAt). include password hash if provided
-    const meta = { name: room, createdAt: Date.now() };
-    if (password) {
-      const salt = crypto.randomBytes(8).toString('hex');
-      const hash = crypto.createHmac('sha256', salt).update(password).digest('hex');
-      meta.salt = salt;
-      meta.hash = hash;
-    }
-    fs.writeFileSync(roomFile(room, 'meta.json'), JSON.stringify(meta, null, 2), 'utf8');
-    res.json({ ok: true, room });
+    const entry = createRoomEntry(room, password);
+    res.json({ ok: true, room: entry.name, id: entry.id });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e) });
   }
@@ -97,7 +58,16 @@ app.post('/rooms', express.json(), (req, res) => {
 
 function verifyRoomPassword(room, password) {
   try {
+    ensureRoomIndex();
+    const ent = findRoomEntry(room);
+    if (!ent) return false;
+    // check index entry first
+    if (ent && ent.hash && ent.salt) {
+      const hash = crypto.createHmac('sha256', ent.salt).update(password).digest('hex');
+      return hash === ent.hash;
+    }
     if (!password) return false;
+    // fallback to meta.json on disk
     const metaFile = roomFile(room, 'meta.json');
     if (!fs.existsSync(metaFile)) return false;
     const meta = JSON.parse(fs.readFileSync(metaFile, 'utf8') || '{}');
@@ -140,29 +110,28 @@ const DATA_DIR = path.join(__dirname, 'data');
 // per-room storage under data/rooms/<room>
 
 function getRoomDir(room) {
-  // prefer existing encoded dir or legacy sanitized dir; if none exists, return encoded path for creation
+  // Prefer looking up room index (room.json). Support both room id or display name.
+  const entry = findRoomEntry(room);
+  if (entry) return path.join(DATA_DIR, 'rooms', entry.path);
+  // legacy fallback: encoded or sanitized dir naming
   const encName = encodeURIComponent(String(room || 'main'));
   const legacyName = String(room || 'main').replace(/[^a-zA-Z0-9_-]/g, '_');
   const encPath = path.join(DATA_DIR, 'rooms', encName);
   const legacyPath = path.join(DATA_DIR, 'rooms', legacyName);
   if (fs.existsSync(encPath)) return encPath;
   if (fs.existsSync(legacyPath)) return legacyPath;
-  // default to encoded path for new rooms
+  // default to encoded path for new rooms (will be replaced when creating via index)
   return encPath;
 }
 
 function roomFile(room, name) {
+  // resolve room to directory using room index if possible
+  const ent = findRoomEntry(room);
+  if (ent) return path.join(DATA_DIR, 'rooms', ent.path, name);
   return path.join(getRoomDir(room), name);
 }
 
-function decodeDirName(dirName) {
-  try {
-    // try decodeURIComponent, but if it's not encoded, this will throw for some patterns
-    return decodeURIComponent(dirName);
-  } catch (e) {
-    return dirName;
-  }
-}
+// (decodeDirName defined near room index helpers)
 
 const SNAPSHOT_FILE = path.join(DATA_DIR, 'messages.json');
 const LOG_FILE = path.join(DATA_DIR, 'messages.log');
@@ -180,6 +149,123 @@ if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
 // ensure rooms directory exists
 const ROOMS_DIR = path.join(DATA_DIR, 'rooms');
 if (!fs.existsSync(ROOMS_DIR)) fs.mkdirSync(ROOMS_DIR, { recursive: true });
+
+// room index file: stores mapping from room id -> metadata { name, path, createdAt, salt?, hash? }
+const ROOM_INDEX_FILE = path.join(ROOMS_DIR, 'room.json');
+let ROOM_INDEX = null;
+
+function loadRoomIndex() {
+  try {
+    if (fs.existsSync(ROOM_INDEX_FILE)) {
+      const raw = fs.readFileSync(ROOM_INDEX_FILE, 'utf8') || '{}';
+      ROOM_INDEX = JSON.parse(raw);
+      return ROOM_INDEX;
+    }
+  } catch (e) {
+    console.error('loadRoomIndex failed', e);
+  }
+  ROOM_INDEX = {};
+  return ROOM_INDEX;
+}
+
+function saveRoomIndex() {
+  try {
+    if (ROOM_INDEX === null) ROOM_INDEX = {};
+    fs.writeFileSync(ROOM_INDEX_FILE, JSON.stringify(ROOM_INDEX, null, 2), 'utf8');
+  } catch (e) {
+    console.error('saveRoomIndex failed', e);
+  }
+}
+
+function decodeDirName(dirName) {
+  try {
+    return decodeURIComponent(dirName);
+  } catch (e) {
+    return dirName;
+  }
+}
+
+// Build or backfill room index from existing directories (legacy compatibility)
+function ensureRoomIndex() {
+  if (ROOM_INDEX && Object.keys(ROOM_INDEX).length) return ROOM_INDEX;
+  loadRoomIndex();
+  try {
+    const items = fs.readdirSync(ROOMS_DIR).filter(n => {
+      const p = path.join(ROOMS_DIR, n);
+      return fs.statSync(p).isDirectory();
+    });
+    for (const dirName of items) {
+      // skip if already indexed
+      const existsInIndex = Object.values(ROOM_INDEX || {}).some(v => v.path === dirName || v.id === dirName);
+      if (existsInIndex) continue;
+      // attempt to read meta.json from legacy dir
+      const metaFile = path.join(ROOMS_DIR, dirName, 'meta.json');
+      let meta = null;
+      if (fs.existsSync(metaFile)) {
+        try { meta = JSON.parse(fs.readFileSync(metaFile, 'utf8') || '{}'); } catch (e) { meta = null; }
+      }
+      const id = dirName;
+      const name = (meta && meta.name) ? meta.name : decodeDirName(dirName);
+      const entry = { id, name, path: dirName, createdAt: (meta && meta.createdAt) ? meta.createdAt : null };
+      if (meta && meta.salt) entry.salt = meta.salt;
+      if (meta && meta.hash) entry.hash = meta.hash;
+      ROOM_INDEX[id] = entry;
+    }
+    saveRoomIndex();
+  } catch (e) {
+    // if ROOMS_DIR scanning fails, ignore
+  }
+  return ROOM_INDEX;
+}
+
+function findRoomEntry(key) {
+  // ensure index is loaded
+  ensureRoomIndex();
+  if (!key) return null;
+  // if key matches an id
+  if (ROOM_INDEX[key]) return ROOM_INDEX[key];
+  // search by display name (exact match)
+  const byName = Object.values(ROOM_INDEX).find(v => v.name === key);
+  if (byName) return byName;
+  // fallback: maybe key matches an encoded or sanitized dir name
+  const enc = encodeURIComponent(key);
+  const legacy = String(key).replace(/[^a-zA-Z0-9_-]/g, '_');
+  const possible = Object.values(ROOM_INDEX).find(v => v.path === enc || v.path === legacy || v.id === enc || v.id === legacy);
+  if (possible) return possible;
+  return null;
+}
+
+function createRoomEntry(name, password) {
+  ensureRoomIndex();
+  // avoid duplicate by name
+  const existing = Object.values(ROOM_INDEX).find(v => v.name === name);
+  if (existing) return existing;
+  const id = crypto.randomBytes(6).toString('hex') + '-' + Date.now();
+  const dirName = id;
+  const dirPath = path.join(ROOMS_DIR, dirName);
+  if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath, { recursive: true });
+  // ensure files
+  const snap = path.join(dirPath, 'messages.json');
+  const log = path.join(dirPath, 'messages.log');
+  const idx = path.join(dirPath, 'archives.json');
+  if (!fs.existsSync(snap)) fs.writeFileSync(snap, '[]', 'utf8');
+  if (!fs.existsSync(log)) fs.writeFileSync(log, '', 'utf8');
+  if (!fs.existsSync(idx)) fs.writeFileSync(idx, '[]', 'utf8');
+  // meta stored in dir for compatibility
+  const meta = { name, createdAt: Date.now() };
+  if (password) {
+    const salt = crypto.randomBytes(8).toString('hex');
+    const hash = crypto.createHmac('sha256', salt).update(password).digest('hex');
+    meta.salt = salt; meta.hash = hash;
+  }
+  fs.writeFileSync(path.join(dirPath, 'meta.json'), JSON.stringify(meta, null, 2), 'utf8');
+  const entry = { id, name, path: dirName, createdAt: meta.createdAt };
+  if (meta.salt) entry.salt = meta.salt;
+  if (meta.hash) entry.hash = meta.hash;
+  ROOM_INDEX[id] = entry;
+  saveRoomIndex();
+  return entry;
+}
 
 function ensureRoomFiles(room) {
   const dir = getRoomDir(room);
@@ -389,7 +475,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('join-room', function(...args) {
-    // signature: join-room(room, password?, cb)
+    // signature: join-room(roomNameOrId, password?, cb)
     try {
       let r = String(args[0] || '').trim();
       let password = null;
@@ -399,39 +485,34 @@ io.on('connection', (socket) => {
         callback = args[2];
       } else if (args.length === 2) {
         if (typeof args[1] === 'function') callback = args[1]; else password = args[1];
-      } else if (args.length === 1) {
-        callback = null;
       }
       if (!r) return callback && callback({ ok: false, error: 'room required' });
-      const dir = getRoomDir(r);
-      if (!fs.existsSync(dir)) return callback && callback({ ok: false, error: 'room not found' });
-      // check password if meta present
-      const metaFile = roomFile(r, 'meta.json');
-      if (fs.existsSync(metaFile)) {
-        const meta = JSON.parse(fs.readFileSync(metaFile, 'utf8') || '{}');
-        if (meta && meta.hash) {
-          if (!password) return callback && callback({ ok: false, error: 'password required' });
-          if (!verifyRoomPassword(r, password)) return callback && callback({ ok: false, error: 'invalid password' });
-        }
+      const ent = findRoomEntry(r);
+      if (!ent) return callback && callback({ ok: false, error: 'room not found' });
+      // verify password if required
+      if (ent && (ent.hash || ent.salt)) {
+        if (!password) return callback && callback({ ok: false, error: 'password required' });
+        if (!verifyRoomPassword(r, password)) return callback && callback({ ok: false, error: 'invalid password' });
       }
-      // perform join
+      // perform join using display name as room id to keep backward compat
       socket.leave(socket.data.room || 'main');
-      socket.data.room = r;
-      socket.join(r);
-      ensureRoomFiles(r);
+      socket.data.room = ent.name;
+      socket.join(ent.name);
+      // ensure files exist for the entry
+      ensureRoomFiles(ent.name);
       // register onlineMap
       global.onlineMap.set(socket.id, socket.data.username);
       // send room history
-      const msgs = loadAllMessages(r, HISTORY_LIMIT);
+      const msgs = loadAllMessages(ent.name, HISTORY_LIMIT);
       socket.emit('history', msgs);
       // update roomMembers
       if (!global.roomMembers) global.roomMembers = new Map();
-      const members = global.roomMembers.get(r) || new Set();
+      const members = global.roomMembers.get(ent.name) || new Set();
       members.add(socket.data.username);
-      global.roomMembers.set(r, members);
+      global.roomMembers.set(ent.name, members);
       const users = Array.from(new Set(Array.from(members.values ? members.values() : members)));
-      io.to(r).emit('presence', { users, event: 'join', user: socket.data.username, room: r });
-      callback && callback({ ok: true, room: r });
+      io.to(ent.name).emit('presence', { users, event: 'join', user: socket.data.username, room: ent.name });
+      callback && callback({ ok: true, room: ent.name });
     } catch (e) {
       const cb = args.find(a => typeof a === 'function');
       cb && cb({ ok: false, error: String(e) });
@@ -439,7 +520,7 @@ io.on('connection', (socket) => {
   });
 
   socket.on('create-room', function(...args) {
-    // signature: create-room(room, password?, cb)
+    // signature: create-room(name, password?, cb)
     try {
       const r = String(args[0] || '').trim();
       let password = null;
@@ -451,18 +532,9 @@ io.on('connection', (socket) => {
         if (typeof args[1] === 'function') callback = args[1]; else password = args[1];
       }
       if (!r) return callback && callback({ ok: false, error: 'room required' });
-      const dir = getRoomDir(r);
-      if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      ensureRoomFiles(r);
-      // always write meta with name and createdAt; include password hash if provided
-      const meta = { name: r, createdAt: Date.now() };
-      if (password) {
-        const salt = crypto.randomBytes(8).toString('hex');
-        const hash = crypto.createHmac('sha256', salt).update(password).digest('hex');
-        meta.salt = salt; meta.hash = hash;
-      }
-      fs.writeFileSync(roomFile(r, 'meta.json'), JSON.stringify(meta, null, 2), 'utf8');
-      callback && callback({ ok: true, room: r });
+      const entry = createRoomEntry(r, password);
+      ensureRoomFiles(entry.name);
+      callback && callback({ ok: true, room: entry.name, id: entry.id });
     } catch (e) {
       const cb = args.find(a => typeof a === 'function');
       cb && cb({ ok: false, error: String(e) });
