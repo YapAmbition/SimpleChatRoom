@@ -1,0 +1,4 @@
+backend/node_modules/
+package-lock.json
+backend.log
+backend/data/

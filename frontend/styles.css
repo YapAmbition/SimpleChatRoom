@@ -1,0 +1,31 @@
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial; background:#f4f6f8; margin:0; padding:20px; }
+.card { background:white; padding:16px; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.08); max-width:420px; margin:12px auto; }
+.hidden { display:none; }
+#chatBox { max-width:900px; margin:12px auto; height:80vh; display:flex; flex-direction:column; }
+.header { display:flex; justify-content:space-between; padding:8px 12px; background:#fff; border-radius:8px 8px 0 0; align-items:center; }
+.header .top-search { display:flex; gap:8px; align-items:center; }
+.header .top-search input { padding:6px 8px; }
+.layout { display:flex; gap:12px; }
+#messages { flex:1; overflow:auto; padding:12px; background:#fff; border:1px solid #eee; min-height:400px; }
+.sidebar { width:180px; background:#fff; padding:8px; border:1px solid #eee; border-radius:6px; height:400px; overflow:auto; }
+.composer { display:flex; gap:8px; padding:12px; background:#fff; border-radius:0 0 8px 8px; }
+.composer input { flex:1; padding:8px 10px; border:1px solid #ddd; border-radius:4px; }
+.composer button { padding:8px 12px; }
+.message { margin-bottom:10px; }
+.message .meta { color:#444; font-size:13px; }
+.message .text { margin-top:4px; font-size:15px; }
+
+.notification { position:fixed; top:20px; right:20px; background:#222; color:#fff; padding:8px 12px; border-radius:6px; opacity:0.95; z-index:9999; }
+
+#loadMoreBtn { font-size:13px; }
+.left-controls { display:flex; gap:8px; align-items:center; }
+.right-controls { display:flex; gap:8px; align-items:center; flex:1; }
+#searchInput { padding:6px 8px; }
+#loadMoreBtn { font-size:13px; }
+
+/* Ensure the overall chat box uses flex and doesn't expand the page */
+/* Ensure the overall chat box uses flex and doesn't expand the page */
+#chatBox { display:flex; flex-direction:column; height:80vh; max-width:900px; margin:12px auto; }
+.layout { display:flex; gap:12px; flex:1; min-height:0; }
+#messages { overflow:auto; flex:1 1 auto; min-height:0; padding:12px; }
+
