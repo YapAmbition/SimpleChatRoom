@@ -8,32 +8,39 @@
   </head>
   <body>
     <div id="app">
-      <div id="loginBox" class="card">
-        <h2>登录 Chat</h2>
-        <input id="username" placeholder="输入用户名（支持emoji）" />
-        <button id="loginBtn">进入聊天室</button>
+      <div id="overlay" class="overlay">
+        <div id="loginBox" class="login-modal">
+          <h2>登录 Chat</h2>
+          <input id="username" placeholder="输入用户名（支持emoji）" />
+          <div style="margin-top:12px; text-align:right;"><button id="loginBtn">进入聊天室</button></div>
+        </div>
       </div>
 
-      <div id="chatBox" class="hidden">
+      <div id="chatBox" class="hidden chat-dimmed">
         <div class="header">
           <div class="title">聊天室（多人）</div>
           <div id="me"></div>
+          <div class="room-join">
+            <input id="roomInput" placeholder="聊天室名" />
+            <button id="joinRoomBtn">加入</button>
+          </div>
           <div class="top-search">
             <input id="searchInput" placeholder="搜索消息" />
             <button id="searchBtn">搜索</button>
           </div>
+          <div id="currentRoom" class="current-room"></div>
         </div>
         <div class="layout">
           <div id="messages" class="messages"></div>
           <div id="sidebar" class="sidebar">
+            <h4>房间列表</h4>
+            <ul id="rooms"></ul>
+            <hr />
             <h4>在线用户</h4>
             <ul id="users"></ul>
           </div>
         </div>
         <div class="composer">
-          <div class="left-controls">
-            <button id="loadMoreBtn">加载更多</button>
-          </div>
           <div class="right-controls">
             <input id="msgInput" placeholder="输入消息，回车发送" />
             <button id="sendBtn">发送</button>

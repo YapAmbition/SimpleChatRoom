@@ -8,6 +8,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helv
 .layout { display:flex; gap:12px; }
 #messages { flex:1; overflow:auto; padding:12px; background:#fff; border:1px solid #eee; min-height:400px; }
 .sidebar { width:180px; background:#fff; padding:8px; border:1px solid #eee; border-radius:6px; height:400px; overflow:auto; }
+/* rooms and users lists inside sidebar should scroll independently */
+#rooms, #users { list-style:none; padding:0; margin:0 0 8px 0; max-height:140px; overflow:auto; }
+#rooms li, #users li { padding:6px 8px; border-radius:4px; }
+#rooms li:hover { background:#f0f0f0; }
 .composer { display:flex; gap:8px; padding:12px; background:#fff; border-radius:0 0 8px 8px; }
 .composer input { flex:1; padding:8px 10px; border:1px solid #ddd; border-radius:4px; }
 .composer button { padding:8px 12px; }
@@ -39,4 +43,28 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helv
 #chatBox { display:flex; flex-direction:column; height:80vh; max-width:900px; margin:12px auto; }
 .layout { display:flex; gap:12px; flex:1; min-height:0; }
 #messages { overflow:auto; flex:1 1 auto; min-height:0; padding:12px; }
+
+/* Modal overlay for login */
+.overlay {
+	position:fixed;
+	left:0; right:0; top:0; bottom:0;
+	background: rgba(0,0,0,0.45);
+	display:flex;
+	align-items:center;
+	justify-content:center;
+	z-index: 9998;
+}
+.login-modal {
+	background: #fff;
+	padding: 18px;
+	border-radius: 10px;
+	box-shadow: 0 6px 24px rgba(0,0,0,0.3);
+	width: 360px;
+	max-width: 90%;
+	z-index: 9999;
+}
+.login-modal h2 { margin-top:0; }
+
+/* When overlay is present, dim chat controls by lower z-index and pointer-events */
+.chat-dimmed { pointer-events: none; opacity: 0.6; }
 

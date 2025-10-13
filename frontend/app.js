@@ -2,17 +2,34 @@ const socket = io();
 
 const loginBox = document.getElementById('loginBox');
 const chatBox = document.getElementById('chatBox');
+const overlay = document.getElementById('overlay');
 const usernameInput = document.getElementById('username');
 const loginBtn = document.getElementById('loginBtn');
 const meLabel = document.getElementById('me');
 const messagesEl = document.getElementById('messages');
 const usersEl = document.getElementById('users');
+const roomsEl = document.getElementById('rooms');
 const msgInput = document.getElementById('msgInput');
 const sendBtn = document.getElementById('sendBtn');
 const searchInput = document.getElementById('searchInput');
 const searchBtn = document.getElementById('searchBtn');
+const roomInput = document.getElementById('roomInput');
+const joinRoomBtn = document.getElementById('joinRoomBtn');
+const currentRoomEl = document.getElementById('currentRoom');
 
 let myName = null;
+let currentRoom = 'main';
+
+// initially disable controls until user logs in
+roomInput.disabled = true;
+joinRoomBtn.disabled = true;
+msgInput.disabled = true;
+sendBtn.disabled = true;
+searchInput.disabled = true;
+searchBtn.disabled = true;
+// overlay should be visible and chat dimmed until login
+overlay.style.display = 'flex';
+chatBox.classList.add('chat-dimmed');
 
 // avatar color by username
 function hashStringToColor(str) {
@@ -136,20 +153,131 @@ function insertMessageAtTop(m) {
 }
 
 loginBtn.addEventListener('click', () => {
-  const name = usernameInput.value.trim() || '匿名';
+  const name = usernameInput.value.trim();
+  if (!name) { notify('请输入用户名'); usernameInput.focus(); return; }
   socket.emit('login', name, (res) => {
     if (res && res.ok) {
+      // hide overlay modal and enable chat
+      overlay.style.display = 'none';
       loginBox.classList.add('hidden');
       chatBox.classList.remove('hidden');
+      chatBox.classList.remove('chat-dimmed');
       meLabel.textContent = res.username;
       myName = res.username;
       // request browser notification permission
       requestNotificationPermission();
+      // show current room
+      currentRoomEl.textContent = `房间: ${currentRoom}`;
+      // enable controls
+      roomInput.disabled = false;
+      joinRoomBtn.disabled = false;
+      msgInput.disabled = false;
+      sendBtn.disabled = false;
+      searchInput.disabled = false;
+      searchBtn.disabled = false;
+      // load room list
+      loadRooms();
     }
   });
 });
 
+async function loadRooms() {
+  try {
+    const res = await fetch('/rooms');
+    const json = await res.json();
+    if (!json || !Array.isArray(json.rooms)) return;
+    roomsEl.innerHTML = '';
+    json.rooms.forEach(r => {
+      const li = document.createElement('li');
+      li.textContent = r.name + (r.hasPassword ? ' 🔒' : '');
+      li.style.cursor = 'pointer';
+      li.addEventListener('click', async () => {
+        if (!myName) return notify('请先登录');
+        if (r.name === currentRoom) return notify('已在该房间');
+        let pw = null;
+        if (r.hasPassword) {
+          pw = prompt('请输入房间密码：');
+          if (pw === null) return;
+        }
+        socket.emit('join-room', r.name, pw, (resp) => {
+          if (resp && resp.ok) {
+            currentRoom = r.name;
+            currentRoomEl.textContent = `房间: ${currentRoom}`;
+            notify(`已加入房间 ${currentRoom}`);
+            oldestTs = null;
+          } else {
+            notify(resp && resp.error ? resp.error : '加入房间失败');
+          }
+        });
+      });
+      roomsEl.appendChild(li);
+    });
+  } catch (e) {
+    console.error('loadRooms failed', e);
+  }
+}
+
+// allow Enter key in username input to submit login
+usernameInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') loginBtn.click();
+});
+
+// Join room button flow: check exists -> confirm create -> join
+joinRoomBtn.addEventListener('click', async () => {
+  if (!myName) return notify('请先登录');
+  const r = (roomInput.value || '').trim();
+  if (!r) return notify('请输入房间名');
+  try {
+    const res = await fetch('/room-exists?room=' + encodeURIComponent(r));
+    const json = await res.json();
+    if (json && json.exists) {
+      // if room has password, prompt
+      let pw = null;
+      if (json.hasPassword) {
+        pw = prompt('请输入房间密码：');
+        if (pw === null) return; // cancelled
+      }
+      socket.emit('join-room', r, pw, (resp) => {
+        if (resp && resp.ok) {
+          currentRoom = r;
+          currentRoomEl.textContent = `房间: ${currentRoom}`;
+          notify(`已加入房间 ${currentRoom}`);
+          // reset oldestTs so infinite scroll won't trigger until history arrives
+          oldestTs = null;
+        } else {
+          notify(resp && resp.error ? resp.error : '加入房间失败');
+        }
+      });
+    } else {
+      const ok = confirm(`房间 "${r}" 不存在。是否创建并加入？`);
+      if (!ok) return;
+      const pw = prompt('为房间设置密码（可选，留空则无密码）：');
+      const c = await fetch('/rooms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room: r, password: pw || '' }) });
+      const cj = await c.json();
+      if (cj && cj.ok) {
+        socket.emit('join-room', r, pw || '', (resp) => {
+          if (resp && resp.ok) {
+            currentRoom = r;
+            currentRoomEl.textContent = `房间: ${currentRoom}`;
+            notify(`已创建并加入房间 ${currentRoom}`);
+            oldestTs = null;
+            loadRooms();
+          } else {
+            notify(resp && resp.error ? resp.error : '加入房间失败');
+          }
+        });
+      } else {
+        notify('创建房间失败');
+      }
+    }
+  } catch (e) {
+    console.error('join room flow failed', e);
+    notify('加入房间失败');
+  }
+});
+
 sendBtn.addEventListener('click', () => {
+  if (!myName) return notify('请先登录');
   const text = msgInput.value.trim();
   if (!text) return;
   socket.emit('send', text);
@@ -161,35 +289,57 @@ sendBtn.addEventListener('click', () => {
   clearUnreadTitle();
 });
 
-msgInput.addEventListener('keyup', (e) => {
-  if (e.key === 'Enter') sendBtn.click();
+// IME composition handling: do not send message when composing (user selecting IME candidates)
+let isComposing = false;
+msgInput.addEventListener('compositionstart', () => { isComposing = true; });
+msgInput.addEventListener('compositionend', () => { 
+  // compositionend may be immediately followed by an Enter key event in some IMEs,
+  // so clear composing flag on next tick to avoid swallowing a real Enter after composition.
+  setTimeout(() => { isComposing = false; }, 0);
+});
+
+msgInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter') {
+    if (isComposing) return; // ignore Enter while composing
+    e.preventDefault(); // prevent default (if any)
+    sendBtn.click();
+  }
 });
 
 // Emoji picker
 // emoji picker removed
 
-// Load more (pagination) - keep track of oldest timestamp loaded
+// infinite scroll: load older messages when user scrolls near the top
 let oldestTs = null;
-const loadMoreBtn = document.getElementById('loadMoreBtn');
-loadMoreBtn.addEventListener('click', async () => {
+let loadingOlder = false;
+messagesEl.addEventListener('scroll', async () => {
+  if (loadingOlder) return;
+  if (messagesEl.scrollTop > 150) return; // not near top
+  if (!oldestTs) return; // nothing to load
+  loadingOlder = true;
   const params = new URLSearchParams();
-  if (oldestTs) params.set('before', oldestTs);
   params.set('limit', '50');
+  params.set('room', currentRoom);
+  params.set('before', oldestTs);
   try {
+    const prevHeight = messagesEl.scrollHeight;
     const res = await fetch('/messages?' + params.toString());
     const json = await res.json();
-    if (json && Array.isArray(json.messages)) {
-      // insert older messages at top
+    if (json && Array.isArray(json.messages) && json.messages.length) {
       json.messages.forEach(m => insertMessageAtTop(m));
-      if (json.messages.length) oldestTs = json.messages[0].ts;
+      const added = messagesEl.scrollHeight - prevHeight;
+      messagesEl.scrollTop = added + messagesEl.scrollTop;
+      oldestTs = json.messages[0].ts;
     }
   } catch (e) {
-    console.error('loadMore failed', e);
+    console.error('load older failed', e);
   }
+  loadingOlder = false;
 });
 
 // Search local messages (simple highlight)
 searchBtn.addEventListener('click', () => {
+  if (!myName) return notify('请先登录');
   const q = searchInput.value.trim().toLowerCase();
   if (!q) return;
   const items = messagesEl.querySelectorAll('.message');
@@ -213,6 +363,8 @@ socket.on('history', (msgs) => {
 });
 
 socket.on('message', (m) => {
+  // only show messages for current room
+  if (m.room && m.room !== currentRoom) return;
   addMessage(m);
   // show browser notification for messages from others
   notifyBrowserMessage(m);
@@ -221,7 +373,8 @@ socket.on('message', (m) => {
 });
 
 socket.on('presence', (data) => {
-  // data: { users: [...], event: 'join'|'leave', user }
+  // data: { users: [...], event: 'join'|'leave', user, room }
+  if (data.room && data.room !== currentRoom) return; // ignore other rooms
   if (Array.isArray(data.users)) {
     usersEl.innerHTML = '';
     data.users.forEach(u => {
