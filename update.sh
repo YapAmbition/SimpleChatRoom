@@ -2,6 +2,30 @@
 # update.sh - stop existing backend node process(es) and restart with nohup
 set -euo pipefail
 
+# default port
+PORT=""
+
+# parse args for --port or -p
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    -p|--port)
+      PORT="$2"; shift 2;;
+    --help|-h)
+      echo "Usage: $0 [--port <port>]"; exit 0;;
+    *) echo "Unknown arg: $1"; exit 1;;
+  esac
+done
+
+# fallback to environment variable if set
+if [[ -z "$PORT" && -n "${PORT:-}" ]]; then
+  PORT="${PORT:-}"
+fi
+
+# default to 3000 if still empty
+if [[ -z "$PORT" ]]; then
+  PORT=3000
+fi
+
 DIR="$(cd "$(dirname "$0")" && pwd)"
 BACKEND_DIR="$DIR/backend"
 LOGFILE="$BACKEND_DIR/backend.log"
@@ -14,13 +38,6 @@ if [ ! -d "$BACKEND_DIR" ]; then
 fi
 
 cd "$BACKEND_DIR"
-
-echo "Ensuring npm is available (sourcing common shell rc files)..."
-# try to source common shell files to pick up nvm or path settings
-if [ -f "$HOME/.bashrc" ]; then source "$HOME/.bashrc" || true; fi
-if [ -f "$HOME/.bash_profile" ]; then source "$HOME/.bash_profile" || true; fi
-if [ -f "$HOME/.zshrc" ]; then source "$HOME/.zshrc" || true; fi
-if [ -f "$HOME/.profile" ]; then source "$HOME/.profile" || true; fi
 
 if ! command -v npm >/dev/null 2>&1; then
   echo "npm not found in PATH. Please ensure Node.js and npm are installed and available." >&2
@@ -35,8 +52,8 @@ echo "Killing existing node server.js processes (if any)..."
 pkill -f "node.*server.js" || true
 sleep 1
 
-echo "Starting backend with nohup, logging to $LOGFILE"
-nohup node server.js > "$LOGFILE" 2>&1 &
+echo "Starting backend with nohup on port $PORT, logging to $LOGFILE"
+env PORT="$PORT" nohup node server.js > "$LOGFILE" 2>&1 &
 PID=$!
 echo "Started (PID: $PID)"
 echo "Tail logs with: tail -f $LOGFILE"

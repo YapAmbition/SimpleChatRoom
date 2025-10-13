@@ -24,4 +24,4 @@ npm start
 更新:
 
 1. git clone最新的master分支
-2. 执行update.sh
+2. 执行./update.sh --port 20001

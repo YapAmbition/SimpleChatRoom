@@ -1,4 +1,4 @@
 backend/node_modules/
 package-lock.json
-backend.log
+backend/backend.log
 backend/data/
