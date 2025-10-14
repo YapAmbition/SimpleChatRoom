@@ -13,6 +13,7 @@ const meLabel = document.getElementById('me');
 const messagesEl = document.getElementById('messages');
 const usersEl = document.getElementById('users');
 const roomsEl = document.getElementById('rooms');
+const roomsToggle = document.getElementById('roomsToggle');
 const msgInput = document.getElementById('msgInput');
 const sendBtn = document.getElementById('sendBtn');
 // search removed
@@ -241,6 +242,18 @@ async function loadRooms() {
   } catch (e) {
     console.error('loadRooms failed', e);
   }
+}
+
+// mobile sidebar toggle
+if (roomsToggle) {
+  roomsToggle.addEventListener('click', () => {
+    const sb = document.getElementById('sidebar');
+    if (!sb) return;
+    if (sb.classList.contains('open')) sb.classList.remove('open'); else sb.classList.add('open');
+  });
+  // close sidebar when clicking on messages area (mobile)
+  const messagesArea = document.getElementById('messages');
+  if (messagesArea) messagesArea.addEventListener('click', () => { const sb = document.getElementById('sidebar'); if (sb && sb.classList.contains('open')) sb.classList.remove('open'); });
 }
 
 // pw modal handlers

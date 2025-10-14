@@ -52,6 +52,25 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helv
 .layout { display:flex; gap:12px; flex:1; min-height:0; }
 #messages { overflow:auto; flex:1 1 auto; min-height:0; padding:12px; }
 
+/* Responsive adjustments */
+@media (max-width: 768px) {
+	#chatBox { padding:8px; margin:8px; height:100vh; }
+	.layout { flex-direction:column-reverse; gap:8px; }
+	.sidebar { width:100%; height:auto; max-height:40vh; overflow:auto; display:none; }
+	.sidebar.open { display:block; position:fixed; left:0; right:0; top:64px; bottom:0; background:#fff; z-index:10000; padding:12px; box-shadow:0 4px 20px rgba(0,0,0,0.2); }
+	#messages { padding:8px; min-height:40vh; }
+	.header { padding:10px; }
+	.join-input { width:100px; }
+	.rooms-toggle { display:inline-flex; align-items:center; justify-content:center; width:36px; height:36px; border-radius:6px; border:none; background:#f0f3f6; cursor:pointer; margin-left:8px; }
+	.user-chip { display:none; }
+	.room-join { display:flex; gap:6px; align-items:center; }
+	.composer textarea { min-height:70px; }
+}
+
+@media (min-width: 769px) {
+	.rooms-toggle { display:none; }
+}
+
 /* Modal overlay for login */
 .overlay {
 	position:fixed;
