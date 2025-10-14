@@ -115,6 +115,11 @@ function notify(text, ms = 2500) {
 
 function esc(s) { return String(s || '').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
+// Format message text for HTML: escape then convert newlines to <br>
+function formatText(s) {
+  return esc(s).replace(/\r?\n/g, '<br>');
+}
+
 function addMessage(m) {
   const el = document.createElement('div');
   // mark message as from me or other
@@ -128,7 +133,7 @@ function addMessage(m) {
   avatar.style.backgroundColor = hashStringToColor(m.user || '');
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
-  bubble.innerHTML = `<div class="meta"><strong>${esc(m.user)}</strong> <span class="ts">${new Date(m.ts).toLocaleTimeString()}</span></div><div class="text">${esc(m.text)}</div>`;
+  bubble.innerHTML = `<div class="meta"><strong>${esc(m.user)}</strong> <span class="ts">${new Date(m.ts).toLocaleTimeString()}</span></div><div class="text">${formatText(m.text)}</div>`;
   if (m.user === myName) {
     el.appendChild(bubble);
     el.appendChild(avatar);
@@ -154,7 +159,7 @@ function insertMessageAtTop(m) {
   avatar.style.backgroundColor = hashStringToColor(m.user || '');
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
-  bubble.innerHTML = `<div class="meta"><strong>${esc(m.user)}</strong> <span class="ts">${new Date(m.ts).toLocaleTimeString()}</span></div><div class="text">${esc(m.text)}</div>`;
+  bubble.innerHTML = `<div class="meta"><strong>${esc(m.user)}</strong> <span class="ts">${new Date(m.ts).toLocaleTimeString()}</span></div><div class="text">${formatText(m.text)}</div>`;
   if (m.user === myName) {
     el.appendChild(bubble);
     el.appendChild(avatar);
@@ -369,7 +374,25 @@ msgInput.addEventListener('compositionend', () => {
 msgInput.addEventListener('keydown', (e) => {
   if (e.key === 'Enter') {
     if (isComposing) return; // ignore Enter while composing
-    e.preventDefault(); // prevent default (if any)
+    // Mac: metaKey (Command) + Enter -> newline
+    // Windows/Linux: ctrlKey + Enter -> newline
+    if (e.metaKey || e.ctrlKey) {
+      // insert newline at cursor position for textarea
+      const ta = e.target;
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      const val = ta.value;
+      const newVal = val.slice(0, start) + '\n' + val.slice(end);
+      ta.value = newVal;
+      // move caret after the newline
+      const pos = start + 1;
+      ta.selectionStart = ta.selectionEnd = pos;
+      // do not send
+      e.preventDefault();
+      return;
+    }
+    // plain Enter -> send
+    e.preventDefault();
     sendBtn.click();
   }
 });
