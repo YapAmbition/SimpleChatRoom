@@ -5,6 +5,7 @@ const chatBox = document.getElementById('chatBox');
 const overlay = document.getElementById('overlay');
 const usernameInput = document.getElementById('username');
 const loginBtn = document.getElementById('loginBtn');
+const loginAvatar = document.getElementById('loginAvatar');
 const meLabel = document.getElementById('me');
 const messagesEl = document.getElementById('messages');
 const usersEl = document.getElementById('users');
@@ -188,8 +189,18 @@ loginBtn.addEventListener('click', () => {
       searchBtn.disabled = false;
       // load room list
       loadRooms();
+    } else {
+      // login rejected (duplicate name or other error)
+      notify((res && res.error) ? res.error : '登录失败');
     }
   });
+});
+
+// live avatar preview while typing username
+usernameInput.addEventListener('input', () => {
+  const v = usernameInput.value.trim();
+  loginAvatar.textContent = v ? v.slice(0,1) : '';
+  loginAvatar.style.backgroundColor = hashStringToColor(v || '');
 });
 
 async function loadRooms() {

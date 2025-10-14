@@ -85,18 +85,8 @@ app.get('/messages', (req, res) => {
     const room = String(req.query.room || '').trim() || 'main';
     const before = req.query.before ? new Date(req.query.before).toISOString() : null;
     const limit = Math.min(parseInt(req.query.limit || String(HISTORY_LIMIT), 10), 1000);
-    // load snapshot + log + archives for the room
-    const all = [];
-    const snap = readSnapshot(room); if (Array.isArray(snap)) all.push(...snap);
-    const logMsgs = readLogLines(room); if (Array.isArray(logMsgs)) all.push(...logMsgs);
-    const idx = readArchivesIndex(room);
-    const candidate = (idx || []).slice().sort((a,b) => b.mtime - a.mtime);
-    for (const meta of candidate) {
-      if (before && meta.maxTs && meta.maxTs < before) break;
-      const arr = loadArchive(path.join(getRoomDir(room), meta.file));
-      if (Array.isArray(arr)) all.push(...arr);
-    }
-    all.sort((a,b) => new Date(a.ts) - new Date(b.ts));
+    // load deduplicated messages and then filter by before/limit
+    const all = loadAllMessages(room, null);
     let filtered = all;
     if (before) filtered = all.filter(m => new Date(m.ts) < new Date(before));
     const result = filtered.slice(-limit);
@@ -346,20 +336,31 @@ function loadArchive(pathname) {
   }
 }
 
-// Merge snapshot + log + archives and return last `limit` messages
+// Merge snapshot + log + archives, deduplicate, and return last `limit` messages.
+// If limit is null, return all messages (deduplicated and sorted).
 function loadAllMessages(room, limit = HISTORY_LIMIT) {
   try {
-    let all = [];
+    let combined = [];
     const snapshot = readSnapshot(room);
-    if (Array.isArray(snapshot)) all = all.concat(snapshot);
+    if (Array.isArray(snapshot)) combined = combined.concat(snapshot);
     const logMsgs = readLogLines(room);
-    if (Array.isArray(logMsgs)) all = all.concat(logMsgs);
+    if (Array.isArray(logMsgs)) combined = combined.concat(logMsgs);
     const archives = listArchives(room);
     for (const a of archives) {
       const msgs = loadArchive(a.path);
-      if (Array.isArray(msgs)) all = all.concat(msgs);
+      if (Array.isArray(msgs)) combined = combined.concat(msgs);
     }
-    if (limit && all.length > limit) return all.slice(-limit);
+
+    // dedupe by id when present; fallback key uses ts|user|text
+    const seen = new Map();
+    for (const m of combined) {
+      if (!m) continue;
+      const key = (m.id && String(m.id)) || `${m.ts}|${m.user}|${m.text}`;
+      if (!seen.has(key)) seen.set(key, m);
+    }
+    // sort by timestamp ascending
+    const all = Array.from(seen.values()).sort((a, b) => new Date(a.ts) - new Date(b.ts));
+    if (limit && Number.isInteger(limit) && all.length > limit) return all.slice(-limit);
     return all;
   } catch (e) {
     console.error('loadAllMessages failed', e);
@@ -455,23 +456,36 @@ io.on('connection', (socket) => {
   if (!global.onlineMap) global.onlineMap = new Map();
 
   socket.on('login', (username, cb) => {
-    socket.data.username = username || '匿名';
-    cb && cb({ ok: true, username: socket.data.username });
-    // default room = main
-    socket.data.room = 'main';
-    // register in onlineMap
-    global.onlineMap.set(socket.id, socket.data.username);
-    socket.join(socket.data.room);
-    // send recent history (room-scoped)
-    const msgs = loadAllMessages(socket.data.room, HISTORY_LIMIT);
-    socket.emit('history', msgs);
-    // register presence (room-aware)
-    if (!global.roomMembers) global.roomMembers = new Map();
-    const members = global.roomMembers.get(socket.data.room) || new Set();
-    members.add(socket.data.username);
-    global.roomMembers.set(socket.data.room, members);
-    const users = Array.from(new Set(Array.from(members.values ? members.values() : members)));
-    io.to(socket.data.room).emit('presence', { users, event: 'join', user: socket.data.username, room: socket.data.room });
+    try {
+      const name = String(username || '').trim() || '匿名';
+      // ensure onlineMap exists
+      if (!global.onlineMap) global.onlineMap = new Map();
+      // check duplicate name
+      const isDuplicate = Array.from(global.onlineMap.values()).includes(name);
+      if (isDuplicate) {
+        return cb && cb({ ok: false, error: '用户名已在线' });
+      }
+      socket.data.username = name;
+      cb && cb({ ok: true, username: socket.data.username });
+      // default room = main
+      socket.data.room = 'main';
+      // register in onlineMap
+      global.onlineMap.set(socket.id, socket.data.username);
+      socket.join(socket.data.room);
+      // send recent history (room-scoped)
+      const msgs = loadAllMessages(socket.data.room, HISTORY_LIMIT);
+      socket.emit('history', msgs);
+      // register presence (room-aware)
+      if (!global.roomMembers) global.roomMembers = new Map();
+      const members = global.roomMembers.get(socket.data.room) || new Set();
+      members.add(socket.data.username);
+      global.roomMembers.set(socket.data.room, members);
+      const users = Array.from(new Set(Array.from(members.values ? members.values() : members)));
+      io.to(socket.data.room).emit('presence', { users, event: 'join', user: socket.data.username, room: socket.data.room });
+    } catch (e) {
+      console.error('login handler failed', e);
+      cb && cb({ ok: false, error: '登录失败' });
+    }
   });
 
   socket.on('join-room', function(...args) {

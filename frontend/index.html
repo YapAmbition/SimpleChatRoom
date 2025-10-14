@@ -11,7 +11,10 @@
       <div id="overlay" class="overlay">
         <div id="loginBox" class="login-modal">
           <h2>登录 Chat</h2>
-          <input id="username" placeholder="输入用户名（支持emoji）" />
+          <div style="display:flex; align-items:center; gap:12px;">
+            <div id="loginAvatar" class="avatar" style="width:48px;height:48px;font-size:20px;"></div>
+            <input id="username" placeholder="输入用户名（支持emoji）" />
+          </div>
           <div style="margin-top:12px; text-align:right;"><button id="loginBtn">进入聊天室</button></div>
         </div>
       </div>
