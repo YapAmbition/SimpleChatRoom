@@ -47,6 +47,17 @@
           </div>
         </div>
       </div>
+      <!-- Password modal for join/create room -->
+      <div id="pwModal" class="overlay" style="display:none;">
+        <div class="login-modal" id="pwBox">
+          <h3 id="pwTitle">房间密码</h3>
+          <input id="pwInput" placeholder="输入房间密码（留空表示无密码）" />
+          <div style="margin-top:12px; text-align:right;">
+            <button id="pwCancel">取消</button>
+            <button id="pwConfirm">确定</button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>

@@ -19,6 +19,17 @@ const currentRoomEl = document.getElementById('currentRoom');
 
 let myName = null;
 let currentRoom = 'main';
+// map room id -> display name
+const ROOM_MAP = {};
+
+// password modal elements
+const pwModal = document.getElementById('pwModal');
+const pwBox = document.getElementById('pwBox');
+const pwInput = document.getElementById('pwInput');
+const pwConfirm = document.getElementById('pwConfirm');
+const pwCancel = document.getElementById('pwCancel');
+const pwTitle = document.getElementById('pwTitle');
+let pendingRoomAction = null; // { type: 'join'|'create', id, name }
 
 // initially disable controls until user logs in
 roomInput.disabled = true;
@@ -188,27 +199,20 @@ async function loadRooms() {
     if (!json || !Array.isArray(json.rooms)) return;
     roomsEl.innerHTML = '';
     json.rooms.forEach(r => {
+      ROOM_MAP[r.id] = r.name;
       const li = document.createElement('li');
       li.textContent = r.name + (r.hasPassword ? ' 🔒' : '');
       li.style.cursor = 'pointer';
+      li.dataset.rid = r.id;
       li.addEventListener('click', async () => {
         if (!myName) return notify('请先登录');
         if (r.name === currentRoom) return notify('已在该房间');
-        let pw = null;
-        if (r.hasPassword) {
-          pw = prompt('请输入房间密码：');
-          if (pw === null) return;
-        }
-        socket.emit('join-room', r.name, pw, (resp) => {
-          if (resp && resp.ok) {
-            currentRoom = r.name;
-            currentRoomEl.textContent = `房间: ${currentRoom}`;
-            notify(`已加入房间 ${currentRoom}`);
-            oldestTs = null;
-          } else {
-            notify(resp && resp.error ? resp.error : '加入房间失败');
-          }
-        });
+        // open password modal for join
+        pendingRoomAction = { type: 'join', id: r.id, name: r.name };
+        pwTitle.textContent = `加入房间：${r.name}`;
+        pwInput.value = '';
+        pwModal.style.display = 'flex';
+        pwInput.focus();
       });
       roomsEl.appendChild(li);
     });
@@ -216,6 +220,62 @@ async function loadRooms() {
     console.error('loadRooms failed', e);
   }
 }
+
+// pw modal handlers
+pwCancel.addEventListener('click', () => {
+  pendingRoomAction = null;
+  pwModal.style.display = 'none';
+});
+
+pwConfirm.addEventListener('click', async () => {
+  if (!pendingRoomAction) { pwModal.style.display = 'none'; return; }
+  const pw = pwInput.value || '';
+  if (pendingRoomAction.type === 'join') {
+    // join by id
+    socket.emit('join-room', pendingRoomAction.id, pw || '', (resp) => {
+      if (resp && resp.ok) {
+        currentRoom = pendingRoomAction.name;
+        currentRoomEl.textContent = `房间: ${currentRoom}`;
+        notify(`已加入房间 ${currentRoom}`);
+        oldestTs = null;
+        pwModal.style.display = 'none';
+        pendingRoomAction = null;
+      } else {
+        notify(resp && resp.error ? resp.error : '加入房间失败');
+      }
+    });
+  } else if (pendingRoomAction.type === 'create') {
+    // create room on server
+    try {
+      const rname = pendingRoomAction.name;
+      const c = await fetch('/rooms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room: rname, password: pw || '' }) });
+      const cj = await c.json();
+      if (cj && cj.ok && cj.id) {
+        // record mapping and reload rooms
+        ROOM_MAP[cj.id] = cj.room || rname;
+        // join by id
+        socket.emit('join-room', cj.id, pw || '', (resp) => {
+          if (resp && resp.ok) {
+            currentRoom = rname;
+            currentRoomEl.textContent = `房间: ${currentRoom}`;
+            notify(`已创建并加入房间 ${currentRoom}`);
+            oldestTs = null;
+            pwModal.style.display = 'none';
+            pendingRoomAction = null;
+            loadRooms();
+          } else {
+            notify(resp && resp.error ? resp.error : '创建或加入房间失败');
+          }
+        });
+      } else {
+        notify('创建房间失败');
+      }
+    } catch (e) {
+      console.error('create room failed', e);
+      notify('创建房间失败');
+    }
+  }
+});
 
 // allow Enter key in username input to submit login
 usernameInput.addEventListener('keydown', (e) => {
@@ -231,44 +291,27 @@ joinRoomBtn.addEventListener('click', async () => {
     const res = await fetch('/room-exists?room=' + encodeURIComponent(r));
     const json = await res.json();
     if (json && json.exists) {
-      // if room has password, prompt
-      let pw = null;
-      if (json.hasPassword) {
-        pw = prompt('请输入房间密码：');
-        if (pw === null) return; // cancelled
+      // find id for this room from ROOM_MAP (if not present, reload rooms)
+      let rid = Object.keys(ROOM_MAP).find(k => ROOM_MAP[k] === r);
+      if (!rid) {
+        await loadRooms();
+        rid = Object.keys(ROOM_MAP).find(k => ROOM_MAP[k] === r);
       }
-      socket.emit('join-room', r, pw, (resp) => {
-        if (resp && resp.ok) {
-          currentRoom = r;
-          currentRoomEl.textContent = `房间: ${currentRoom}`;
-          notify(`已加入房间 ${currentRoom}`);
-          // reset oldestTs so infinite scroll won't trigger until history arrives
-          oldestTs = null;
-        } else {
-          notify(resp && resp.error ? resp.error : '加入房间失败');
-        }
-      });
+      if (!rid) return notify('无法找到房间 ID');
+      pendingRoomAction = { type: 'join', id: rid, name: r };
+      pwTitle.textContent = `加入房间：${r}`;
+      pwInput.value = '';
+      pwModal.style.display = 'flex';
+      pwInput.focus();
     } else {
       const ok = confirm(`房间 "${r}" 不存在。是否创建并加入？`);
       if (!ok) return;
-      const pw = prompt('为房间设置密码（可选，留空则无密码）：');
-      const c = await fetch('/rooms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room: r, password: pw || '' }) });
-      const cj = await c.json();
-      if (cj && cj.ok) {
-        socket.emit('join-room', r, pw || '', (resp) => {
-          if (resp && resp.ok) {
-            currentRoom = r;
-            currentRoomEl.textContent = `房间: ${currentRoom}`;
-            notify(`已创建并加入房间 ${currentRoom}`);
-            oldestTs = null;
-            loadRooms();
-          } else {
-            notify(resp && resp.error ? resp.error : '加入房间失败');
-          }
-        });
-      } else {
-        notify('创建房间失败');
-      }
+      // open modal to set password and create
+      pendingRoomAction = { type: 'create', name: r };
+      pwTitle.textContent = `创建并加入房间：${r}`;
+      pwInput.value = '';
+      pwModal.style.display = 'flex';
+      pwInput.focus();
     }
   } catch (e) {
     console.error('join room flow failed', e);
