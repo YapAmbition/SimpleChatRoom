@@ -131,7 +131,7 @@ const MAX_MESSAGES = parseInt(process.env.MAX_MESSAGES || '5000', 10);
 const MAX_FILE_SIZE = parseInt(process.env.MAX_FILE_SIZE_BYTES || String(5 * 1024 * 1024), 10);
 const MAX_ARCHIVES = parseInt(process.env.MAX_ARCHIVES || '10', 10);
 const HISTORY_LIMIT = parseInt(process.env.HISTORY_LIMIT || '200', 10);
-const COMPACT_AFTER_MS = parseInt(process.env.COMPACT_AFTER_MS || String(5 * 60 * 1000), 10); // periodic compact
+const COMPACT_AFTER_MS = parseInt(process.env.COMPACT_AFTER_MS || String(24 * 60 * 60 * 1000), 10); // periodic compact
 
 const zlib = require('zlib');
 

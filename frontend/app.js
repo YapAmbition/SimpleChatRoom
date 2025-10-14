@@ -6,14 +6,16 @@ const overlay = document.getElementById('overlay');
 const usernameInput = document.getElementById('username');
 const loginBtn = document.getElementById('loginBtn');
 const loginAvatar = document.getElementById('loginAvatar');
+const headerAvatar = document.getElementById('headerAvatar');
+const roomTitleEl = document.getElementById('roomTitle');
+const roomCountEl = document.getElementById('roomCount');
 const meLabel = document.getElementById('me');
 const messagesEl = document.getElementById('messages');
 const usersEl = document.getElementById('users');
 const roomsEl = document.getElementById('rooms');
 const msgInput = document.getElementById('msgInput');
 const sendBtn = document.getElementById('sendBtn');
-const searchInput = document.getElementById('searchInput');
-const searchBtn = document.getElementById('searchBtn');
+// search removed
 const roomInput = document.getElementById('roomInput');
 const joinRoomBtn = document.getElementById('joinRoomBtn');
 const currentRoomEl = document.getElementById('currentRoom');
@@ -33,12 +35,10 @@ const pwTitle = document.getElementById('pwTitle');
 let pendingRoomAction = null; // { type: 'join'|'create', id, name }
 
 // initially disable controls until user logs in
-roomInput.disabled = true;
-joinRoomBtn.disabled = true;
-msgInput.disabled = true;
-sendBtn.disabled = true;
-searchInput.disabled = true;
-searchBtn.disabled = true;
+  roomInput.disabled = true;
+  joinRoomBtn.disabled = true;
+  msgInput.disabled = true;
+  sendBtn.disabled = true;
 // overlay should be visible and chat dimmed until login
 overlay.style.display = 'flex';
 chatBox.classList.add('chat-dimmed');
@@ -174,19 +174,21 @@ loginBtn.addEventListener('click', () => {
       loginBox.classList.add('hidden');
       chatBox.classList.remove('hidden');
       chatBox.classList.remove('chat-dimmed');
-      meLabel.textContent = res.username;
-      myName = res.username;
+  meLabel.textContent = res.username;
+  myName = res.username;
+  // update header avatar and name
+  if (headerAvatar) { headerAvatar.textContent = myName ? myName.slice(0,1) : ''; headerAvatar.style.backgroundColor = hashStringToColor(myName || ''); }
+  const headerName = document.getElementById('me'); if (headerName) headerName.textContent = myName;
       // request browser notification permission
       requestNotificationPermission();
-      // show current room
-      currentRoomEl.textContent = `房间: ${currentRoom}`;
-      // enable controls
-      roomInput.disabled = false;
-      joinRoomBtn.disabled = false;
-      msgInput.disabled = false;
-      sendBtn.disabled = false;
-      searchInput.disabled = false;
-      searchBtn.disabled = false;
+  // show current room (header)
+  const headerRoom = document.getElementById('currentRoom');
+  if (headerRoom) headerRoom.textContent = `房间: ${currentRoom}`;
+  // enable controls
+  roomInput.disabled = false;
+  joinRoomBtn.disabled = false;
+  msgInput.disabled = false;
+  sendBtn.disabled = false;
       // load room list
       loadRooms();
     } else {
@@ -201,6 +203,7 @@ usernameInput.addEventListener('input', () => {
   const v = usernameInput.value.trim();
   loginAvatar.textContent = v ? v.slice(0,1) : '';
   loginAvatar.style.backgroundColor = hashStringToColor(v || '');
+  if (headerAvatar) { headerAvatar.textContent = v ? v.slice(0,1) : ''; headerAvatar.style.backgroundColor = hashStringToColor(v || ''); }
 });
 
 async function loadRooms() {
@@ -244,9 +247,9 @@ pwConfirm.addEventListener('click', async () => {
   if (pendingRoomAction.type === 'join') {
     // join by id
     socket.emit('join-room', pendingRoomAction.id, pw || '', (resp) => {
-      if (resp && resp.ok) {
+        if (resp && resp.ok) {
         currentRoom = pendingRoomAction.name;
-        currentRoomEl.textContent = `房间: ${currentRoom}`;
+        const headerRoom = document.getElementById('roomTitle'); if (headerRoom) headerRoom.textContent = currentRoom;
         notify(`已加入房间 ${currentRoom}`);
         oldestTs = null;
         pwModal.style.display = 'none';
@@ -267,9 +270,9 @@ pwConfirm.addEventListener('click', async () => {
         // join by id
         socket.emit('join-room', cj.id, pw || '', (resp) => {
           if (resp && resp.ok) {
-            currentRoom = rname;
-            currentRoomEl.textContent = `房间: ${currentRoom}`;
-            notify(`已创建并加入房间 ${currentRoom}`);
+        currentRoom = rname;
+        const headerRoom = document.getElementById('roomTitle'); if (headerRoom) headerRoom.textContent = currentRoom;
+        notify(`已创建并加入房间 ${currentRoom}`);
             oldestTs = null;
             pwModal.style.display = 'none';
             pendingRoomAction = null;
@@ -391,21 +394,7 @@ messagesEl.addEventListener('scroll', async () => {
   loadingOlder = false;
 });
 
-// Search local messages (simple highlight)
-searchBtn.addEventListener('click', () => {
-  if (!myName) return notify('请先登录');
-  const q = searchInput.value.trim().toLowerCase();
-  if (!q) return;
-  const items = messagesEl.querySelectorAll('.message');
-  items.forEach(it => {
-    const text = it.querySelector('.text').textContent.toLowerCase();
-    if (text.includes(q)) {
-      it.style.background = '#fff6a8';
-    } else {
-      it.style.background = '';
-    }
-  });
-});
+// search removed from UI
 
 socket.on('history', (msgs) => {
   messagesEl.innerHTML = '';
@@ -437,6 +426,8 @@ socket.on('presence', (data) => {
       if (u === myName) li.style.fontWeight = '700';
       usersEl.appendChild(li);
     });
+    // update header room count
+    const rc = document.getElementById('roomCount'); if (rc) rc.textContent = String(data.users.length || 0);
   }
   if (data.event === 'join') notify(`${data.user} 已加入`);
   if (data.event === 'leave') notify(`${data.user} 已离开`);

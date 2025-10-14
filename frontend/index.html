@@ -12,8 +12,8 @@
         <div id="loginBox" class="login-modal">
           <h2>登录 Chat</h2>
           <div style="display:flex; align-items:center; gap:12px;">
-            <div id="loginAvatar" class="avatar" style="width:48px;height:48px;font-size:20px;"></div>
-            <input id="username" placeholder="输入用户名（支持emoji）" />
+            <div id="loginAvatar" class="avatar login-avatar" style="width:48px;height:48px;font-size:20px;"></div>
+            <input id="username" class="join-input" placeholder="输入用户名（支持emoji）" />
           </div>
           <div style="margin-top:12px; text-align:right;"><button id="loginBtn">进入聊天室</button></div>
         </div>
@@ -21,17 +21,20 @@
 
       <div id="chatBox" class="hidden chat-dimmed">
         <div class="header">
-          <div class="title">聊天室（多人）</div>
-          <div id="me"></div>
-          <div class="room-join">
-            <input id="roomInput" placeholder="聊天室名" />
-            <button id="joinRoomBtn">加入</button>
+          <div class="header-left">
+            <div id="roomTitle" class="room-title">主房间</div>
+            <div id="roomSubtitle" class="room-sub">在线人数：<span id="roomCount">0</span></div>
           </div>
-          <div class="top-search">
-            <input id="searchInput" placeholder="搜索消息" />
-            <button id="searchBtn">搜索</button>
+          <div class="header-right">
+            <div class="user-chip">
+              <div id="headerAvatar" class="avatar header-avatar"></div>
+              <div id="me" class="username">未登录</div>
+            </div>
+            <div class="room-join">
+              <input id="roomInput" class="join-input" placeholder="聊天室名" />
+              <button id="joinRoomBtn" class="join-btn">加入</button>
+            </div>
           </div>
-          <div id="currentRoom" class="current-room"></div>
         </div>
         <div class="layout">
           <div id="messages" class="messages"></div>

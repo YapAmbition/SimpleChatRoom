@@ -2,9 +2,19 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helv
 .card { background:white; padding:16px; border-radius:8px; box-shadow:0 1px 3px rgba(0,0,0,0.08); max-width:420px; margin:12px auto; }
 .hidden { display:none; }
 #chatBox { max-width:900px; margin:12px auto; height:80vh; display:flex; flex-direction:column; }
-.header { display:flex; justify-content:space-between; padding:8px 12px; background:#fff; border-radius:8px 8px 0 0; align-items:center; }
-.header .top-search { display:flex; gap:8px; align-items:center; }
-.header .top-search input { padding:6px 8px; }
+.header { display:flex; justify-content:space-between; padding:12px 16px; background:#fff; border-radius:8px 8px 0 0; align-items:center; }
+.room-title { font-size:18px; font-weight:700; color:#222; }
+.room-sub { font-size:12px; color:#666; margin-top:4px; }
+
+.header-left { display:flex; flex-direction:column; }
+.header-right { display:flex; align-items:center; gap:12px; }
+
+.user-chip { display:flex; align-items:center; background: #f7fafc; padding:6px 8px; border-radius:20px; border:1px solid #e6edf3; }
+.user-chip .username { font-size:14px; color:#333; }
+
+.join-input { padding:8px 10px; border-radius:20px; border:1px solid #d7e6ef; width:140px; }
+.join-btn { padding:8px 12px; border-radius:20px; background:linear-gradient(180deg,#4fa3ff,#1e88ff); color:white; border:none; cursor:pointer; }
+.join-btn:hover { opacity:0.95; }
 .layout { display:flex; gap:12px; }
 #messages { flex:1; overflow:auto; padding:12px; background:#fff; border:1px solid #eee; min-height:400px; }
 .sidebar { width:180px; background:#fff; padding:8px; border:1px solid #eee; border-radius:6px; height:400px; overflow:auto; }
@@ -35,8 +45,6 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helv
 #loadMoreBtn { font-size:13px; }
 .left-controls { display:flex; gap:8px; align-items:center; }
 .right-controls { display:flex; gap:8px; align-items:center; flex:1; }
-#searchInput { padding:6px 8px; }
-#loadMoreBtn { font-size:13px; }
 
 /* Ensure the overall chat box uses flex and doesn't expand the page */
 /* Ensure the overall chat box uses flex and doesn't expand the page */
@@ -65,8 +73,14 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helv
 }
 .login-modal h2 { margin-top:0; }
 
-/* avatar preview inside login modal */
-#loginAvatar { width:48px; height:48px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#ddd; font-weight:700; color:#333; }
+/* unified avatar styles */
+.avatar { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; background:#ddd; font-weight:700; color:#333; }
+
+/* larger avatar inside login modal */
+.login-avatar { width:48px; height:48px; font-size:20px; }
+
+/* header avatar tweaks */
+.header-avatar { width:36px; height:36px; font-size:14px; margin-right:8px; }
 
 /* When overlay is present, dim chat controls by lower z-index and pointer-events */
 .chat-dimmed { pointer-events: none; opacity: 0.6; }
