@@ -467,17 +467,22 @@ io.on('connection', (socket) => {
       }
       socket.data.username = name;
       cb && cb({ ok: true, username: socket.data.username });
-      // default room = main
-      socket.data.room = 'main';
-      // register in onlineMap
-      global.onlineMap.set(socket.id, socket.data.username);
-      socket.join(socket.data.room);
-      // send recent history (room-scoped)
-      const msgs = loadAllMessages(socket.data.room, HISTORY_LIMIT);
-      socket.emit('history', msgs);
+  // default room = main (use id from ROOM_INDEX if available)
+  ensureRoomIndex();
+  const mainEntry = Object.values(ROOM_INDEX).find(e => e.name === 'main') || null;
+  const defaultRoomId = mainEntry ? mainEntry.id : 'main';
+  socket.data.room = defaultRoomId;
+  // register in onlineMap
+  global.onlineMap.set(socket.id, socket.data.username);
+  socket.join(socket.data.room);
+  // send recent history (room-scoped by id)
+  const msgs = loadAllMessages(socket.data.room, HISTORY_LIMIT) || [];
+  // ensure each message has the room id so clients can filter reliably
+  msgs.forEach(m => { if (m) m.room = socket.data.room; });
+  socket.emit('history', msgs);
       // register presence (room-aware)
       if (!global.roomMembers) global.roomMembers = new Map();
-      const members = global.roomMembers.get(socket.data.room) || new Set();
+  const members = global.roomMembers.get(socket.data.room) || new Set();
       members.add(socket.data.username);
       global.roomMembers.set(socket.data.room, members);
       const users = Array.from(new Set(Array.from(members.values ? members.values() : members)));
@@ -508,25 +513,27 @@ io.on('connection', (socket) => {
         if (!password) return callback && callback({ ok: false, error: 'password required' });
         if (!verifyRoomPassword(r, password)) return callback && callback({ ok: false, error: 'invalid password' });
       }
-      // perform join using display name as room id to keep backward compat
-      socket.leave(socket.data.room || 'main');
-      socket.data.room = ent.name;
-      socket.join(ent.name);
-      // ensure files exist for the entry
-      ensureRoomFiles(ent.name);
-      // register onlineMap
-      global.onlineMap.set(socket.id, socket.data.username);
-      // send room history
-      const msgs = loadAllMessages(ent.name, HISTORY_LIMIT);
-      socket.emit('history', msgs);
-      // update roomMembers
-      if (!global.roomMembers) global.roomMembers = new Map();
-      const members = global.roomMembers.get(ent.name) || new Set();
-      members.add(socket.data.username);
-      global.roomMembers.set(ent.name, members);
-      const users = Array.from(new Set(Array.from(members.values ? members.values() : members)));
-      io.to(ent.name).emit('presence', { users, event: 'join', user: socket.data.username, room: ent.name });
-      callback && callback({ ok: true, room: ent.name });
+  // perform join using canonical room id (use ent.id) to avoid name/id mixing
+  socket.leave(socket.data.room || 'main');
+  socket.data.room = ent.id;
+  socket.join(ent.id);
+  // ensure files exist for the entry (use id)
+  ensureRoomFiles(ent.id);
+  // register onlineMap
+  global.onlineMap.set(socket.id, socket.data.username);
+  // send room history (by id)
+  const msgs = loadAllMessages(ent.id, HISTORY_LIMIT) || [];
+  // tag messages with canonical room id for client-side filtering
+  msgs.forEach(m => { if (m) m.room = ent.id; });
+  socket.emit('history', msgs);
+  // update roomMembers
+  if (!global.roomMembers) global.roomMembers = new Map();
+  const members = global.roomMembers.get(ent.id) || new Set();
+  members.add(socket.data.username);
+  global.roomMembers.set(ent.id, members);
+  const users = Array.from(new Set(Array.from(members.values ? members.values() : members)));
+  io.to(ent.id).emit('presence', { users, event: 'join', user: socket.data.username, room: ent.id });
+  callback && callback({ ok: true, id: ent.id, name: ent.name });
     } catch (e) {
       const cb = args.find(a => typeof a === 'function');
       cb && cb({ ok: false, error: String(e) });

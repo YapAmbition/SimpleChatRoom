@@ -21,7 +21,8 @@ const joinRoomBtn = document.getElementById('joinRoomBtn');
 const currentRoomEl = document.getElementById('currentRoom');
 
 let myName = null;
-let currentRoom = 'main';
+let currentRoomId = null; // canonical id used for requests
+let currentRoomName = 'main'; // display name
 // map room id -> display name
 const ROOM_MAP = {};
 
@@ -167,7 +168,7 @@ function insertMessageAtTop(m) {
 loginBtn.addEventListener('click', () => {
   const name = usernameInput.value.trim();
   if (!name) { notify('请输入用户名'); usernameInput.focus(); return; }
-  socket.emit('login', name, (res) => {
+  socket.emit('login', name, async (res) => {
     if (res && res.ok) {
       // hide overlay modal and enable chat
       overlay.style.display = 'none';
@@ -183,14 +184,16 @@ loginBtn.addEventListener('click', () => {
       requestNotificationPermission();
   // show current room (header)
   const headerRoom = document.getElementById('currentRoom');
-  if (headerRoom) headerRoom.textContent = `房间: ${currentRoom}`;
+  if (headerRoom) headerRoom.textContent = `房间: ${currentRoomName}`;
   // enable controls
   roomInput.disabled = false;
   joinRoomBtn.disabled = false;
   msgInput.disabled = false;
   sendBtn.disabled = false;
-      // load room list
-      loadRooms();
+  // load room list and resolve default room id if available
+  await loadRooms();
+  const mainId = Object.keys(ROOM_MAP).find(k => ROOM_MAP[k] === 'main');
+  currentRoomId = mainId || 'main';
     } else {
       // login rejected (duplicate name or other error)
       notify((res && res.error) ? res.error : '登录失败');
@@ -220,7 +223,7 @@ async function loadRooms() {
       li.dataset.rid = r.id;
       li.addEventListener('click', async () => {
         if (!myName) return notify('请先登录');
-        if (r.name === currentRoom) return notify('已在该房间');
+        if (r.name === currentRoomName) return notify('已在该房间');
         // open password modal for join
         pendingRoomAction = { type: 'join', id: r.id, name: r.name };
         pwTitle.textContent = `加入房间：${r.name}`;
@@ -245,12 +248,16 @@ pwConfirm.addEventListener('click', async () => {
   if (!pendingRoomAction) { pwModal.style.display = 'none'; return; }
   const pw = pwInput.value || '';
   if (pendingRoomAction.type === 'join') {
-    // join by id
-    socket.emit('join-room', pendingRoomAction.id, pw || '', (resp) => {
+  // join by id
+  // set tentative current room so incoming history is associated correctly
+  currentRoomId = pendingRoomAction.id;
+  currentRoomName = pendingRoomAction.name;
+  socket.emit('join-room', pendingRoomAction.id, pw || '', (resp) => {
         if (resp && resp.ok) {
-        currentRoom = pendingRoomAction.name;
-        const headerRoom = document.getElementById('roomTitle'); if (headerRoom) headerRoom.textContent = currentRoom;
-        notify(`已加入房间 ${currentRoom}`);
+        currentRoomId = resp.id || pendingRoomAction.id;
+        currentRoomName = resp.name || pendingRoomAction.name;
+        const headerRoom = document.getElementById('roomTitle'); if (headerRoom) headerRoom.textContent = currentRoomName;
+        notify(`已加入房间 ${currentRoomName}`);
         oldestTs = null;
         pwModal.style.display = 'none';
         pendingRoomAction = null;
@@ -267,12 +274,16 @@ pwConfirm.addEventListener('click', async () => {
       if (cj && cj.ok && cj.id) {
         // record mapping and reload rooms
         ROOM_MAP[cj.id] = cj.room || rname;
-        // join by id
-        socket.emit('join-room', cj.id, pw || '', (resp) => {
+  // join by id
+  // set tentative current room
+  currentRoomId = cj.id;
+  currentRoomName = rname;
+  socket.emit('join-room', cj.id, pw || '', (resp) => {
           if (resp && resp.ok) {
-        currentRoom = rname;
-        const headerRoom = document.getElementById('roomTitle'); if (headerRoom) headerRoom.textContent = currentRoom;
-        notify(`已创建并加入房间 ${currentRoom}`);
+        currentRoomId = resp.id || cj.id;
+        currentRoomName = resp.name || rname;
+        const headerRoom = document.getElementById('roomTitle'); if (headerRoom) headerRoom.textContent = currentRoomName;
+        notify(`已创建并加入房间 ${currentRoomName}`);
             oldestTs = null;
             pwModal.style.display = 'none';
             pendingRoomAction = null;
@@ -376,7 +387,7 @@ messagesEl.addEventListener('scroll', async () => {
   loadingOlder = true;
   const params = new URLSearchParams();
   params.set('limit', '50');
-  params.set('room', currentRoom);
+  params.set('room', currentRoomId || currentRoomName || 'main');
   params.set('before', oldestTs);
   try {
     const prevHeight = messagesEl.scrollHeight;
@@ -406,8 +417,9 @@ socket.on('history', (msgs) => {
 });
 
 socket.on('message', (m) => {
-  // only show messages for current room
-  if (m.room && m.room !== currentRoom) return;
+  // only show messages for current room (compare with id or name)
+  const roomMatch = m.room && (m.room === currentRoomId || m.room === currentRoomName);
+  if (m.room && !roomMatch) return;
   addMessage(m);
   // show browser notification for messages from others
   notifyBrowserMessage(m);
@@ -417,7 +429,7 @@ socket.on('message', (m) => {
 
 socket.on('presence', (data) => {
   // data: { users: [...], event: 'join'|'leave', user, room }
-  if (data.room && data.room !== currentRoom) return; // ignore other rooms
+  if (data.room && !(data.room === currentRoomId || data.room === currentRoomName)) return; // ignore other rooms
   if (Array.isArray(data.users)) {
     usersEl.innerHTML = '';
     data.users.forEach(u => {
