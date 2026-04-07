@@ -1,4 +1,7 @@
-const socket = io();
+// Detect sub-path prefix for reverse proxy deployment (e.g. /chat-room)
+// Works both locally (BASE_PATH='') and behind nginx sub-path
+const BASE_PATH = window.location.pathname.replace(/\/+$/, '');
+const socket = io({ path: BASE_PATH + '/socket.io' });
 
 const loginBox = document.getElementById('loginBox');
 const chatBox = document.getElementById('chatBox');
@@ -149,9 +152,10 @@ function renderBubbleContent(m) {
     const f = m.file;
     const icon = getFileIcon(f.mimetype);
     const isImage = f.mimetype && f.mimetype.startsWith('image/');
-    let fileHtml = `<a class="file-message" href="${esc(f.url)}" target="_blank" download="${esc(f.name)}">`;
+    const fileUrl = esc(BASE_PATH + f.url);
+    let fileHtml = `<a class="file-message" href="${fileUrl}" target="_blank" download="${esc(f.name)}">`;
     if (isImage) {
-      fileHtml += `<img class="file-preview" src="${esc(f.url)}" alt="${esc(f.name)}" />`;
+      fileHtml += `<img class="file-preview" src="${fileUrl}" alt="${esc(f.name)}" />`;
     } else {
       fileHtml += `<span class="file-icon">${icon}</span>`;
     }
@@ -241,7 +245,7 @@ loginBtn.addEventListener('click', () => {
   await loadRooms();
   // load upload config from server
   try {
-    const cfgRes = await fetch('/upload-config');
+    const cfgRes = await fetch(BASE_PATH + '/upload-config');
     const cfgJson = await cfgRes.json();
     if (cfgJson && cfgJson.ok && cfgJson.maxFileSize) maxUploadFileSize = cfgJson.maxFileSize;
   } catch (e) { /* use default */ }
@@ -264,7 +268,7 @@ usernameInput.addEventListener('input', () => {
 
 async function loadRooms() {
   try {
-    const res = await fetch('/rooms');
+    const res = await fetch(BASE_PATH + '/rooms');
     const json = await res.json();
     if (!json || !Array.isArray(json.rooms)) return;
     roomsEl.innerHTML = '';
@@ -334,7 +338,7 @@ pwConfirm.addEventListener('click', async () => {
     // create room on server
     try {
       const rname = pendingRoomAction.name;
-      const c = await fetch('/rooms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room: rname, password: pw || '' }) });
+      const c = await fetch(BASE_PATH + '/rooms', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ room: rname, password: pw || '' }) });
       const cj = await c.json();
       if (cj && cj.ok && cj.id) {
         // record mapping and reload rooms
@@ -378,7 +382,7 @@ joinRoomBtn.addEventListener('click', async () => {
   const r = (roomInput.value || '').trim();
   if (!r) return notify('请输入房间名');
   try {
-    const res = await fetch('/room-exists?room=' + encodeURIComponent(r));
+    const res = await fetch(BASE_PATH + '/room-exists?room=' + encodeURIComponent(r));
     const json = await res.json();
     if (json && json.exists) {
       // find id for this room from ROOM_MAP (if not present, reload rooms)
@@ -447,7 +451,7 @@ fileInput.addEventListener('change', async () => {
   try {
     fileBtn.disabled = true;
     fileBtn.textContent = '...';
-    const res = await fetch('/upload', { method: 'POST', body: formData });
+    const res = await fetch(BASE_PATH + '/upload', { method: 'POST', body: formData });
     const json = await res.json();
     if (json && json.ok && json.file) {
       // send file message via socket
@@ -528,7 +532,7 @@ messagesEl.addEventListener('scroll', async () => {
   params.set('before', oldestTs);
   try {
     const prevHeight = messagesEl.scrollHeight;
-    const res = await fetch('/messages?' + params.toString());
+    const res = await fetch(BASE_PATH + '/messages?' + params.toString());
     const json = await res.json();
     if (json && Array.isArray(json.messages) && json.messages.length) {
       json.messages.forEach(m => insertMessageAtTop(m));
