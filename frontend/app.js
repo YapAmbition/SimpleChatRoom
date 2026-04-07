@@ -51,6 +51,113 @@ let pendingRoomAction = null; // { type: 'join'|'create', id, name }
 overlay.style.display = 'flex';
 chatBox.classList.add('chat-dimmed');
 
+// Extract a representative character from username for avatar display
+// If name contains "的", use the first char after the last "的"; otherwise use the last char
+function avatarChar(name) {
+  if (!name) return '?';
+  const idx = name.lastIndexOf('的');
+  if (idx >= 0 && idx + 1 < name.length) return name.charAt(idx + 1);
+  return name.charAt(name.length - 1);
+}
+
+// Random name generator
+const randomNameBtn = document.getElementById('randomNameBtn');
+let nameConfig = null;
+
+async function loadNameConfig() {
+  if (nameConfig) return nameConfig;
+  try {
+    const res = await fetch(BASE_PATH + '/name-config.json');
+    nameConfig = await res.json();
+  } catch (e) {
+    nameConfig = { places: ['在某处'], actions: ['做某事'], things: ['某人'] };
+  }
+  return nameConfig;
+}
+
+function pickRandom(arr) {
+  return arr[Math.floor(Math.random() * arr.length)];
+}
+
+async function generateRandomName() {
+  const cfg = await loadNameConfig();
+  return pickRandom(cfg.places) + pickRandom(cfg.actions) + '的' + pickRandom(cfg.things);
+}
+
+if (randomNameBtn) {
+  randomNameBtn.addEventListener('click', async () => {
+    const name = await generateRandomName();
+    usernameInput.value = name;
+    usernameInput.dispatchEvent(new Event('input'));
+    hideNameHistory();
+  });
+}
+
+// Recent username history (localStorage, max 5, most recent first)
+const NAME_HISTORY_KEY = 'recentUsernames';
+const NAME_HISTORY_MAX = 5;
+
+function getNameHistory() {
+  try {
+    const raw = localStorage.getItem(NAME_HISTORY_KEY);
+    if (!raw) return [];
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch (e) { return []; }
+}
+
+function saveNameToHistory(name) {
+  if (!name) return;
+  let history = getNameHistory();
+  // remove duplicate then prepend
+  history = history.filter(n => n !== name);
+  history.unshift(name);
+  if (history.length > NAME_HISTORY_MAX) history = history.slice(0, NAME_HISTORY_MAX);
+  localStorage.setItem(NAME_HISTORY_KEY, JSON.stringify(history));
+}
+
+// Dropdown for name history
+let nameHistoryEl = null;
+
+function createNameHistoryDropdown() {
+  if (nameHistoryEl) return nameHistoryEl;
+  nameHistoryEl = document.createElement('ul');
+  nameHistoryEl.className = 'name-history-dropdown';
+  usernameInput.parentElement.style.position = 'relative';
+  usernameInput.parentElement.appendChild(nameHistoryEl);
+  return nameHistoryEl;
+}
+
+function showNameHistory() {
+  const history = getNameHistory();
+  if (!history.length) return;
+  if (usernameInput.value.trim()) return; // only show when input is empty
+  const dropdown = createNameHistoryDropdown();
+  dropdown.innerHTML = '';
+  history.forEach(name => {
+    const li = document.createElement('li');
+    li.textContent = name;
+    li.addEventListener('mousedown', (e) => {
+      e.preventDefault(); // prevent blur
+      usernameInput.value = name;
+      usernameInput.dispatchEvent(new Event('input'));
+      hideNameHistory();
+    });
+    dropdown.appendChild(li);
+  });
+  dropdown.style.display = 'block';
+}
+
+function hideNameHistory() {
+  if (nameHistoryEl) nameHistoryEl.style.display = 'none';
+}
+
+usernameInput.addEventListener('focus', () => { showNameHistory(); });
+usernameInput.addEventListener('blur', () => { hideNameHistory(); });
+usernameInput.addEventListener('input', () => {
+  if (usernameInput.value.trim()) hideNameHistory(); else showNameHistory();
+});
+
 // avatar color by username
 function hashStringToColor(str) {
   if (!str) return '#cccccc';
@@ -124,6 +231,17 @@ function clearUnreadTitle() {
 window.addEventListener('focus', clearUnreadTitle);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) clearUnreadTitle(); });
 
+// Copy button handler (event delegation on messages container)
+messagesEl.addEventListener('click', (e) => {
+  const btn = e.target.closest('.copy-btn');
+  if (!btn) return;
+  const text = btn.getAttribute('data-copy') || '';
+  navigator.clipboard.writeText(text).then(() => {
+    btn.textContent = '已复制';
+    setTimeout(() => { btn.textContent = '复制'; }, 1500);
+  }).catch(() => { notify('复制失败'); });
+});
+
 function notify(text, ms = 2500) {
   const n = document.createElement('div');
   n.className = 'notification';
@@ -180,23 +298,30 @@ function renderBubbleContent(m) {
 
 function addMessage(m) {
   const el = document.createElement('div');
-  // mark message as from me or other
   const cls = (m.user === myName) ? 'message me' : 'message other';
   el.className = cls;
-  // bubble layout: avatar + bubble
+  // avatar column: copy button on top, avatar on bottom
+  const avatarCol = document.createElement('div');
+  avatarCol.className = 'avatar-col';
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'copy-btn';
+  copyBtn.textContent = '复制';
+  copyBtn.setAttribute('data-copy', m.text || '');
   const avatar = document.createElement('div');
   avatar.className = 'avatar';
-  avatar.textContent = (m.user || '?').slice(0,1);
+  avatar.textContent = avatarChar(m.user);
   avatar.title = m.user || '';
   avatar.style.backgroundColor = hashStringToColor(m.user || '');
+  avatarCol.appendChild(copyBtn);
+  avatarCol.appendChild(avatar);
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
   bubble.innerHTML = renderBubbleContent(m);
   if (m.user === myName) {
     el.appendChild(bubble);
-    el.appendChild(avatar);
+    el.appendChild(avatarCol);
   } else {
-    el.appendChild(avatar);
+    el.appendChild(avatarCol);
     el.appendChild(bubble);
   }
   // check if near bottom BEFORE appending the new message
@@ -211,19 +336,27 @@ function insertMessageAtTop(m) {
   const el = document.createElement('div');
   const cls = (m.user === myName) ? 'message me' : 'message other';
   el.className = cls;
+  const avatarCol = document.createElement('div');
+  avatarCol.className = 'avatar-col';
+  const copyBtn = document.createElement('button');
+  copyBtn.className = 'copy-btn';
+  copyBtn.textContent = '复制';
+  copyBtn.setAttribute('data-copy', m.text || '');
   const avatar = document.createElement('div');
   avatar.className = 'avatar';
-  avatar.textContent = (m.user || '?').slice(0,1);
+  avatar.textContent = avatarChar(m.user);
   avatar.title = m.user || '';
   avatar.style.backgroundColor = hashStringToColor(m.user || '');
+  avatarCol.appendChild(copyBtn);
+  avatarCol.appendChild(avatar);
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
   bubble.innerHTML = renderBubbleContent(m);
   if (m.user === myName) {
     el.appendChild(bubble);
-    el.appendChild(avatar);
+    el.appendChild(avatarCol);
   } else {
-    el.appendChild(avatar);
+    el.appendChild(avatarCol);
     el.appendChild(bubble);
   }
   messagesEl.insertBefore(el, messagesEl.firstChild);
@@ -234,6 +367,9 @@ loginBtn.addEventListener('click', () => {
   if (!name) { notify('请输入用户名'); usernameInput.focus(); return; }
   socket.emit('login', name, async (res) => {
     if (res && res.ok) {
+      // save username to history
+      saveNameToHistory(name);
+      hideNameHistory();
       // hide overlay modal and enable chat
       overlay.style.display = 'none';
       loginBox.classList.add('hidden');
@@ -242,7 +378,7 @@ loginBtn.addEventListener('click', () => {
   meLabel.textContent = res.username;
   myName = res.username;
   // update header avatar and name
-  if (headerAvatar) { headerAvatar.textContent = myName ? myName.slice(0,1) : ''; headerAvatar.style.backgroundColor = hashStringToColor(myName || ''); }
+  if (headerAvatar) { headerAvatar.textContent = avatarChar(myName); headerAvatar.style.backgroundColor = hashStringToColor(myName || ''); }
   const headerName = document.getElementById('me'); if (headerName) headerName.textContent = myName;
       // request browser notification permission
       requestNotificationPermission();
@@ -274,9 +410,9 @@ loginBtn.addEventListener('click', () => {
 // live avatar preview while typing username
 usernameInput.addEventListener('input', () => {
   const v = usernameInput.value.trim();
-  loginAvatar.textContent = v ? v.slice(0,1) : '';
+  loginAvatar.textContent = avatarChar(v);
   loginAvatar.style.backgroundColor = hashStringToColor(v || '');
-  if (headerAvatar) { headerAvatar.textContent = v ? v.slice(0,1) : ''; headerAvatar.style.backgroundColor = hashStringToColor(v || ''); }
+  if (headerAvatar) { headerAvatar.textContent = avatarChar(v); headerAvatar.style.backgroundColor = hashStringToColor(v || ''); }
 });
 
 async function loadRooms() {

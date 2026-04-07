@@ -2,3 +2,5 @@ backend/node_modules/
 package-lock.json
 backend/backend.log
 backend/data/
+
+.DS_Store

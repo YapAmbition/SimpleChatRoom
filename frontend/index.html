@@ -13,9 +13,10 @@
           <h2>登录 Chat</h2>
           <div style="display:flex; align-items:center; gap:12px;">
             <div id="loginAvatar" class="avatar login-avatar" style="width:48px;height:48px;font-size:20px;"></div>
-            <input id="username" class="join-input" placeholder="输入用户名（支持emoji）" />
+            <input id="username" class="join-input" placeholder="输入用户名（支持emoji）" autocomplete="off" style="flex:1;" />
+            <button id="randomNameBtn" class="random-name-btn" title="随机生成名字">随机</button>
           </div>
-          <div style="margin-top:12px; text-align:right;"><button id="loginBtn">进入聊天室</button></div>
+          <div style="margin-top:12px; text-align:right;"><button id="loginBtn" class="login-btn">进入聊天室</button></div>
         </div>
       </div>
 
