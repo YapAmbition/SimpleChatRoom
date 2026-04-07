@@ -168,9 +168,9 @@ function hashStringToColor(str) {
     h = h & h;
   }
   const colors = [
-    '#f44336','#e91e63','#9c27b0','#673ab7','#3f51b5','#2196f3','#03a9f4','#00bcd4',
-    '#009688','#4caf50','#8bc34a','#cddc39','#ffeb3b','#ffc107','#ff9800','#ff5722',
-    '#795548','#607d8b'
+    '#FFB3B3','#FFCBA4','#FFE0A3','#FFF1A3','#E8F5A3','#B8E6B8','#A3E0D8',
+    '#A3D5F0','#B3C7F7','#C8B3F7','#E0B3F7','#F7B3E0','#F7B3C8','#B3F0E8',
+    '#C7E8A3','#F0D5A3','#A3E8E8','#D5C7F0','#F0C7D5','#C7F0D5'
   ];
   const idx = Math.abs(h) % colors.length;
   return colors[idx];
