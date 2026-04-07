@@ -1,27 +1,30 @@
-# Simple Chat App
+# 安装pm2 管理进程
+npm install -g pm2
 
-后端: Node.js + Express + Socket.IO，聊天记录保存在 `backend/data/messages.json`。
+#运行chatRoom
 
-前端: 静态页面，位于 `frontend`。
+PORT=20001 npx pm2 start server.js --name chat-room
 
-运行:
 
-1. 进入后端目录并安装依赖
+# 关于pm2:
 
-```bash
-cd chat-app/backend
-npm install
-```
+# 查看运行中的进程
+npx pm2 list
 
-2. 启动服务器（默认 http://localhost:3000 ）
+# 重启（更新代码后用这个）
+npx pm2 restart chat-room
 
-```bash
-npm start
-```
+# 停止
+npx pm2 stop chat-room
 
-3. 在浏览器打开 `http://localhost:3000`，可同时打开多个窗口模拟多人聊天室。
+# 启动（停止后再开）
+npx pm2 start chat-room
 
-更新:
+# 删除（彻底移除这个进程记录）
+npx pm2 delete chat-room
 
-1. git clone最新的master分支
-2. 执行./update.sh --port 20001
+# 查看实时日志
+npx pm2 logs chat-room
+
+# 清除日志
+npx pm2 flush chat-room
