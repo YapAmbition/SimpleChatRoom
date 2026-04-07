@@ -17,7 +17,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helv
 .join-btn:hover { opacity:0.95; }
 .layout { display:flex; gap:12px; }
 #messages { flex:1; overflow:auto; padding:12px; background:#fff; border:1px solid #eee; min-height:400px; }
-.sidebar { width:180px; background:#fff; padding:8px; border:1px solid #eee; border-radius:6px; height:400px; overflow:auto; }
+.sidebar { width:180px; flex-shrink:0; background:#fff; padding:8px; border:1px solid #eee; border-radius:6px; height:400px; overflow:auto; }
 /* rooms and users lists inside sidebar should scroll independently */
 #rooms, #users { list-style:none; padding:0; margin:0 0 8px 0; max-height:140px; overflow:auto; }
 #rooms li, #users li { padding:6px 8px; border-radius:4px; }
@@ -51,7 +51,7 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helv
 /* Ensure the overall chat box uses flex and doesn't expand the page */
 #chatBox { display:flex; flex-direction:column; height:80vh; max-width:900px; margin:12px auto; }
 .layout { display:flex; gap:12px; flex:1; min-height:0; }
-#messages { overflow:auto; flex:1 1 auto; min-height:0; padding:12px; }
+#messages { overflow:auto; flex:1 1 auto; min-width:0; min-height:0; padding:12px; }
 
 /* Responsive adjustments */
 @media (max-width: 768px) {
