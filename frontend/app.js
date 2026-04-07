@@ -70,6 +70,18 @@ function hashStringToColor(str) {
 }
 
 // Browser notification helpers
+let notifyEnabled = localStorage.getItem('notifyEnabled') === 'true';
+const notifyToggle = document.getElementById('notifyToggle');
+
+if (notifyToggle) {
+  notifyToggle.checked = notifyEnabled;
+  notifyToggle.addEventListener('change', () => {
+    notifyEnabled = notifyToggle.checked;
+    localStorage.setItem('notifyEnabled', String(notifyEnabled));
+    if (notifyEnabled) requestNotificationPermission();
+  });
+}
+
 function requestNotificationPermission() {
   if (!('Notification' in window)) return;
   if (Notification.permission === 'default') {
@@ -79,13 +91,13 @@ function requestNotificationPermission() {
 
 function notifyBrowserMessage(m) {
   try {
+    if (!notifyEnabled) return;
     if (!('Notification' in window)) return;
     if (Notification.permission !== 'granted') return;
     if (!m || !m.user) return;
-    // do not notify for our own messages
     if (m.user === myName) return;
-    // Only show notification when page not visible (optional behaviour)
-    if (!document.hidden) return;
+    // only notify when page does not have focus (e.g. user is in another app)
+    if (document.hasFocus()) return;
 
     const title = `${m.user} 发送了新消息`;
     const body = (m.text || '').slice(0, 140);
@@ -187,10 +199,11 @@ function addMessage(m) {
     el.appendChild(avatar);
     el.appendChild(bubble);
   }
-  messagesEl.appendChild(el);
-  // auto-scroll only if near bottom
+  // check if near bottom BEFORE appending the new message
   const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 100;
-  if (nearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+  messagesEl.appendChild(el);
+  // auto-scroll if was near bottom, or if it's our own message
+  if (nearBottom || m.user === myName) messagesEl.scrollTop = messagesEl.scrollHeight;
 }
 
 // insertMessageAtTop used when loading older messages

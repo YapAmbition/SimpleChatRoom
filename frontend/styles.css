@@ -12,6 +12,9 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helv
 .user-chip { display:flex; align-items:center; background: #f7fafc; padding:6px 8px; border-radius:20px; border:1px solid #e6edf3; }
 .user-chip .username { font-size:14px; color:#333; }
 
+.notify-label { display:flex; align-items:center; gap:3px; font-size:12px; color:#666; cursor:pointer; margin-left:6px; white-space:nowrap; }
+.notify-label input { margin:0; cursor:pointer; }
+
 .join-input { padding:8px 10px; border-radius:20px; border:1px solid #d7e6ef; width:140px; }
 .join-btn { padding:8px 12px; border-radius:20px; background:linear-gradient(180deg,#4fa3ff,#1e88ff); color:white; border:none; cursor:pointer; }
 .join-btn:hover { opacity:0.95; }
@@ -26,8 +29,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helv
 .composer textarea { flex:1; padding:8px 10px; border:1px solid #ddd; border-radius:6px; min-height:56px; resize:vertical; }
 .composer button { padding:8px 12px; margin-left:8px; align-self:flex-end; height:40px; }
 .message { margin-bottom:10px; }
-.message .meta { color:#444; font-size:13px; }
-.message .text { margin-top:4px; font-size:15px; white-space:pre-wrap; word-break:break-word; }
+.message .meta { display:inline-flex; align-items:center; gap:6px; padding:2px 8px; border-radius:10px; background:#f0f2f5; font-size:12px; color:#666; margin-bottom:4px; }
+.message .meta strong { font-weight:600; color:#333; font-size:12px; }
+.message .meta .ts { font-size:11px; color:#999; }
+.message .text { clear:both; margin-top:2px; font-size:15px; white-space:pre-wrap; word-break:break-word; }
 
 /* message bubble styles */
 .message { display:flex; align-items:flex-end; gap:8px; }
@@ -35,10 +40,10 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helv
 .message .bubble { max-width:70%; padding:8px 10px; border-radius:12px; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,0.06); }
 .message.me { justify-content:flex-end; }
 .message.me .bubble { background:#dcf8c6; }
-.message.me .bubble .meta { text-align:right; }
+.message.me .bubble .meta { background:#c8e6b0; float:right; }
 .message.me .avatar { order:2; }
 .message.other { justify-content:flex-start; }
-.message.other .bubble { background:#fff; }
+.message.other .bubble { background:#e8edf2; }
 
 
 .notification { position:fixed; top:20px; right:20px; background:#222; color:#fff; padding:8px 12px; border-radius:6px; opacity:0.95; z-index:9999; }
