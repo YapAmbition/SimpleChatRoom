@@ -4,6 +4,7 @@ const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
 const crypto = require('crypto');
+const multer = require('multer');
 const { Server } = require('socket.io');
 
 const app = express();
@@ -133,12 +134,66 @@ const MAX_ARCHIVES = parseInt(process.env.MAX_ARCHIVES || '10', 10);
 const HISTORY_LIMIT = parseInt(process.env.HISTORY_LIMIT || '200', 10);
 const COMPACT_AFTER_MS = parseInt(process.env.COMPACT_AFTER_MS || String(24 * 60 * 60 * 1000), 10); // periodic compact
 
+// File upload config: max upload file size in bytes (default 10MB)
+const MAX_UPLOAD_FILE_SIZE = parseInt(process.env.MAX_UPLOAD_FILE_SIZE || String(10 * 1024 * 1024), 10);
+
 const zlib = require('zlib');
 
 if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR);
 // ensure rooms directory exists
 const ROOMS_DIR = path.join(DATA_DIR, 'rooms');
 if (!fs.existsSync(ROOMS_DIR)) fs.mkdirSync(ROOMS_DIR, { recursive: true });
+
+// ensure uploads directory exists
+const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+
+// multer storage config
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, UPLOADS_DIR),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const base = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_\u4e00-\u9fff-]/g, '_');
+    const unique = Date.now() + '-' + crypto.randomBytes(4).toString('hex');
+    cb(null, `${unique}_${base}${ext}`);
+  }
+});
+const upload = multer({
+  storage,
+  limits: { fileSize: MAX_UPLOAD_FILE_SIZE }
+});
+
+// Serve uploaded files
+app.use('/uploads', express.static(UPLOADS_DIR));
+
+// File upload endpoint
+app.post('/upload', (req, res) => {
+  upload.single('file')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') {
+        const maxMB = (MAX_UPLOAD_FILE_SIZE / (1024 * 1024)).toFixed(1);
+        return res.status(413).json({ ok: false, error: `文件大小超过限制 (最大 ${maxMB}MB)` });
+      }
+      return res.status(400).json({ ok: false, error: err.message || '上传失败' });
+    }
+    if (!req.file) return res.status(400).json({ ok: false, error: '没有选择文件' });
+    const fileUrl = `/uploads/${req.file.filename}`;
+    res.json({
+      ok: true,
+      file: {
+        url: fileUrl,
+        name: req.file.originalname,
+        size: req.file.size,
+        mimetype: req.file.mimetype
+      }
+    });
+  });
+});
+
+// API: get max upload file size
+app.get('/upload-config', (req, res) => {
+  res.json({ ok: true, maxFileSize: MAX_UPLOAD_FILE_SIZE });
+});
 
 // room index file: stores mapping from room id -> metadata { name, path, createdAt, salt?, hash? }
 const ROOM_INDEX_FILE = path.join(ROOMS_DIR, 'room.json');
@@ -562,16 +617,23 @@ io.on('connection', (socket) => {
     }
   });
 
-  socket.on('send', (text) => {
+  socket.on('send', (data) => {
     const username = socket.data.username || '匿名';
     const room = socket.data.room || 'main';
     const msg = {
       id: Date.now() + '-' + Math.random().toString(36).slice(2, 9),
       user: username,
-      text: text,
       ts: new Date().toISOString(),
       room: room
     };
+    // support both plain text and file messages
+    if (typeof data === 'object' && data !== null && data.type === 'file') {
+      msg.type = 'file';
+      msg.file = { url: data.file.url, name: data.file.name, size: data.file.size, mimetype: data.file.mimetype };
+      msg.text = `[文件] ${data.file.name}`;
+    } else {
+      msg.text = typeof data === 'string' ? data : String(data || '');
+    }
     appendMessage(msg, room);
     io.to(room).emit('message', msg);
   });

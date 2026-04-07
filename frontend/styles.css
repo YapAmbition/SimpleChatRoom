@@ -27,14 +27,15 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helv
 .composer button { padding:8px 12px; margin-left:8px; align-self:flex-end; height:40px; }
 .message { margin-bottom:10px; }
 .message .meta { color:#444; font-size:13px; }
-.message .text { margin-top:4px; font-size:15px; }
+.message .text { margin-top:4px; font-size:15px; white-space:pre-wrap; word-break:break-word; }
 
 /* message bubble styles */
 .message { display:flex; align-items:flex-end; gap:8px; }
 .message .avatar { width:32px; height:32px; border-radius:50%; background:#ddd; display:flex; align-items:center; justify-content:center; font-weight:700; color:#333; }
 .message .bubble { max-width:70%; padding:8px 10px; border-radius:12px; background:#fff; box-shadow:0 1px 2px rgba(0,0,0,0.06); }
 .message.me { justify-content:flex-end; }
-.message.me .bubble { background:#dcf8c6; text-align:right; }
+.message.me .bubble { background:#dcf8c6; }
+.message.me .bubble .meta { text-align:right; }
 .message.me .avatar { order:2; }
 .message.other { justify-content:flex-start; }
 .message.other .bubble { background:#fff; }
@@ -108,4 +109,17 @@ body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helv
 #pwBox input, #pwBox textarea { width:100%; padding:8px; margin-top:8px; box-sizing:border-box; }
 #pwBox button { padding:6px 10px; margin-left:8px; }
 #pwModal .login-modal { width: 420px; }
+
+/* File upload button */
+.file-btn { padding:8px 10px; border:1px solid #ddd; border-radius:6px; background:#f7fafc; cursor:pointer; font-size:18px; line-height:1; align-self:flex-end; height:40px; }
+.file-btn:hover { background:#e8edf2; }
+
+/* File message styles */
+.file-message { display:flex; align-items:center; gap:8px; padding:8px 10px; background:#f4f6f8; border-radius:8px; border:1px solid #e6edf3; margin-top:4px; text-decoration:none; color:#333; cursor:pointer; }
+.file-message:hover { background:#eaf0f6; }
+.file-message .file-icon { font-size:24px; flex-shrink:0; }
+.file-message .file-info { display:flex; flex-direction:column; min-width:0; }
+.file-message .file-name { font-size:14px; font-weight:600; color:#1e88ff; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.file-message .file-size { font-size:12px; color:#888; }
+.file-message .file-preview { max-width:200px; max-height:150px; border-radius:6px; object-fit:contain; }
 

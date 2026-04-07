@@ -16,6 +16,8 @@ const roomsEl = document.getElementById('rooms');
 const roomsToggle = document.getElementById('roomsToggle');
 const msgInput = document.getElementById('msgInput');
 const sendBtn = document.getElementById('sendBtn');
+const fileBtn = document.getElementById('fileBtn');
+const fileInput = document.getElementById('fileInput');
 // search removed
 const roomInput = document.getElementById('roomInput');
 const joinRoomBtn = document.getElementById('joinRoomBtn');
@@ -26,6 +28,7 @@ let currentRoomId = null; // canonical id used for requests
 let currentRoomName = 'main'; // display name
 // map room id -> display name
 const ROOM_MAP = {};
+let maxUploadFileSize = 10 * 1024 * 1024; // default 10MB, updated from server
 
 // password modal elements
 const pwModal = document.getElementById('pwModal');
@@ -116,9 +119,47 @@ function notify(text, ms = 2500) {
 
 function esc(s) { return String(s || '').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-// Format message text for HTML: escape then convert newlines to <br>
+// Format message text for HTML: escape only (whitespace preserved via CSS white-space:pre-wrap)
 function formatText(s) {
-  return esc(s).replace(/\r?\n/g, '<br>');
+  return esc(s);
+}
+
+// Format file size for display
+function formatFileSize(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
+}
+
+// Get file icon based on mimetype
+function getFileIcon(mimetype) {
+  if (!mimetype) return '\u{1F4C4}';
+  if (mimetype.startsWith('image/')) return '\u{1F5BC}';
+  if (mimetype.startsWith('video/')) return '\u{1F3AC}';
+  if (mimetype.startsWith('audio/')) return '\u{1F3B5}';
+  if (mimetype.includes('pdf')) return '\u{1F4D1}';
+  if (mimetype.includes('zip') || mimetype.includes('rar') || mimetype.includes('tar') || mimetype.includes('gz')) return '\u{1F4E6}';
+  return '\u{1F4C4}';
+}
+
+// Render the content area of a message bubble (text or file)
+function renderBubbleContent(m) {
+  const metaHtml = `<div class="meta"><strong>${esc(m.user)}</strong> <span class="ts">${new Date(m.ts).toLocaleTimeString()}</span></div>`;
+  if (m.type === 'file' && m.file) {
+    const f = m.file;
+    const icon = getFileIcon(f.mimetype);
+    const isImage = f.mimetype && f.mimetype.startsWith('image/');
+    let fileHtml = `<a class="file-message" href="${esc(f.url)}" target="_blank" download="${esc(f.name)}">`;
+    if (isImage) {
+      fileHtml += `<img class="file-preview" src="${esc(f.url)}" alt="${esc(f.name)}" />`;
+    } else {
+      fileHtml += `<span class="file-icon">${icon}</span>`;
+    }
+    fileHtml += `<span class="file-info"><span class="file-name">${esc(f.name)}</span><span class="file-size">${formatFileSize(f.size)}</span></span>`;
+    fileHtml += `</a>`;
+    return metaHtml + fileHtml;
+  }
+  return metaHtml + `<div class="text">${formatText(m.text)}</div>`;
 }
 
 function addMessage(m) {
@@ -134,7 +175,7 @@ function addMessage(m) {
   avatar.style.backgroundColor = hashStringToColor(m.user || '');
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
-  bubble.innerHTML = `<div class="meta"><strong>${esc(m.user)}</strong> <span class="ts">${new Date(m.ts).toLocaleTimeString()}</span></div><div class="text">${formatText(m.text)}</div>`;
+  bubble.innerHTML = renderBubbleContent(m);
   if (m.user === myName) {
     el.appendChild(bubble);
     el.appendChild(avatar);
@@ -160,7 +201,7 @@ function insertMessageAtTop(m) {
   avatar.style.backgroundColor = hashStringToColor(m.user || '');
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
-  bubble.innerHTML = `<div class="meta"><strong>${esc(m.user)}</strong> <span class="ts">${new Date(m.ts).toLocaleTimeString()}</span></div><div class="text">${formatText(m.text)}</div>`;
+  bubble.innerHTML = renderBubbleContent(m);
   if (m.user === myName) {
     el.appendChild(bubble);
     el.appendChild(avatar);
@@ -198,6 +239,12 @@ loginBtn.addEventListener('click', () => {
   sendBtn.disabled = false;
   // load room list and resolve default room id if available
   await loadRooms();
+  // load upload config from server
+  try {
+    const cfgRes = await fetch('/upload-config');
+    const cfgJson = await cfgRes.json();
+    if (cfgJson && cfgJson.ok && cfgJson.maxFileSize) maxUploadFileSize = cfgJson.maxFileSize;
+  } catch (e) { /* use default */ }
   const mainId = Object.keys(ROOM_MAP).find(k => ROOM_MAP[k] === 'main');
   currentRoomId = mainId || 'main';
     } else {
@@ -375,6 +422,50 @@ sendBtn.addEventListener('click', () => {
   clearUnreadTitle();
 });
 
+// File upload handling
+fileBtn.addEventListener('click', () => {
+  if (!myName) return notify('请先登录');
+  fileInput.click();
+});
+
+fileInput.addEventListener('change', async () => {
+  const file = fileInput.files[0];
+  if (!file) return;
+  fileInput.value = ''; // reset so same file can be selected again
+
+  // check file size
+  if (file.size > maxUploadFileSize) {
+    const maxMB = (maxUploadFileSize / (1024 * 1024)).toFixed(1);
+    notify(`文件大小超过限制 (最大 ${maxMB}MB)`);
+    return;
+  }
+
+  // upload via HTTP
+  const formData = new FormData();
+  formData.append('file', file);
+
+  try {
+    fileBtn.disabled = true;
+    fileBtn.textContent = '...';
+    const res = await fetch('/upload', { method: 'POST', body: formData });
+    const json = await res.json();
+    if (json && json.ok && json.file) {
+      // send file message via socket
+      socket.emit('send', { type: 'file', file: json.file });
+      messagesEl.scrollTop = messagesEl.scrollHeight;
+      clearUnreadTitle();
+    } else {
+      notify(json && json.error ? json.error : '文件上传失败');
+    }
+  } catch (e) {
+    console.error('file upload failed', e);
+    notify('文件上传失败');
+  } finally {
+    fileBtn.disabled = false;
+    fileBtn.textContent = '\u{1F4CE}';
+  }
+});
+
 // IME composition handling: do not send message when composing (user selecting IME candidates)
 let isComposing = false;
 msgInput.addEventListener('compositionstart', () => { isComposing = true; });
@@ -385,6 +476,16 @@ msgInput.addEventListener('compositionend', () => {
 });
 
 msgInput.addEventListener('keydown', (e) => {
+  // Tab key: insert tab character instead of moving focus
+  if (e.key === 'Tab') {
+    e.preventDefault();
+    const ta = e.target;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    ta.value = ta.value.slice(0, start) + '\t' + ta.value.slice(end);
+    ta.selectionStart = ta.selectionEnd = start + 1;
+    return;
+  }
   if (e.key === 'Enter') {
     if (isComposing) return; // ignore Enter while composing
     // Mac: metaKey (Command) + Enter -> newline
