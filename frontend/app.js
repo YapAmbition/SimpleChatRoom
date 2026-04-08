@@ -697,6 +697,21 @@ messagesEl.addEventListener('scroll', async () => {
 
 // search removed from UI
 
+// Admin: room deleted by admin — switch to main room
+socket.on('room-deleted', (data) => {
+  notify(`房间 "${data.roomName}" 已被管理员删除，已自动回到主房间`);
+  currentRoomId = 'main';
+  currentRoomName = 'main';
+  const headerRoom = document.getElementById('roomTitle');
+  if (headerRoom) headerRoom.textContent = 'main';
+  loadRooms();
+});
+
+// Admin: room list changed (created/deleted/password changed)
+socket.on('rooms-updated', () => {
+  loadRooms();
+});
+
 socket.on('history', (msgs) => {
   messagesEl.innerHTML = '';
   msgs.forEach(addMessage);

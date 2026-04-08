@@ -50,6 +50,7 @@ app.post('/rooms', express.json(), (req, res) => {
     const room = String((req.body && req.body.room) || '').trim();
     const password = String((req.body && req.body.password) || '').trim();
     if (!room) return res.status(400).json({ ok: false, error: 'room required' });
+    if (room.startsWith('_')) return res.status(400).json({ ok: false, error: '房间名不能以下划线开头' });
     const entry = createRoomEntry(room, password);
     res.json({ ok: true, room: entry.name, id: entry.id });
   } catch (e) {
@@ -236,6 +237,7 @@ function ensureRoomIndex() {
   loadRoomIndex();
   try {
     const items = fs.readdirSync(ROOMS_DIR).filter(n => {
+      if (n.startsWith('_')) return false; // skip backup directories
       const p = path.join(ROOMS_DIR, n);
       return fs.statSync(p).isDirectory();
     });
@@ -254,6 +256,7 @@ function ensureRoomIndex() {
       const entry = { id, name, path: dirName, createdAt: (meta && meta.createdAt) ? meta.createdAt : null };
       if (meta && meta.salt) entry.salt = meta.salt;
       if (meta && meta.hash) entry.hash = meta.hash;
+      if (meta && meta.password) entry.password = meta.password;
       ROOM_INDEX[id] = entry;
     }
     saveRoomIndex();
@@ -302,11 +305,13 @@ function createRoomEntry(name, password) {
     const salt = crypto.randomBytes(8).toString('hex');
     const hash = crypto.createHmac('sha256', salt).update(password).digest('hex');
     meta.salt = salt; meta.hash = hash;
+    meta.password = password;
   }
   fs.writeFileSync(path.join(dirPath, 'meta.json'), JSON.stringify(meta, null, 2), 'utf8');
   const entry = { id, name, path: dirName, createdAt: meta.createdAt };
   if (meta.salt) entry.salt = meta.salt;
   if (meta.hash) entry.hash = meta.hash;
+  if (meta.password) entry.password = meta.password;
   ROOM_INDEX[id] = entry;
   saveRoomIndex();
   return entry;
@@ -608,6 +613,7 @@ io.on('connection', (socket) => {
         if (typeof args[1] === 'function') callback = args[1]; else password = args[1];
       }
       if (!r) return callback && callback({ ok: false, error: 'room required' });
+      if (r.startsWith('_')) return callback && callback({ ok: false, error: '房间名不能以下划线开头' });
       const entry = createRoomEntry(r, password);
       ensureRoomFiles(entry.name);
       callback && callback({ ok: true, room: entry.name, id: entry.id });
@@ -653,6 +659,281 @@ io.on('connection', (socket) => {
       }
     }
   });
+});
+
+// ========== Admin Panel ==========
+
+const ADMIN_CONFIG_FILE = path.join(DATA_DIR, 'admin-config.json');
+const adminTokens = new Set();
+
+function loadAdminConfig() {
+  try {
+    if (fs.existsSync(ADMIN_CONFIG_FILE)) {
+      return JSON.parse(fs.readFileSync(ADMIN_CONFIG_FILE, 'utf8') || '{}');
+    }
+  } catch (e) { console.error('loadAdminConfig failed', e); }
+  return null;
+}
+
+function saveAdminConfig(config) {
+  fs.writeFileSync(ADMIN_CONFIG_FILE, JSON.stringify(config, null, 2), 'utf8');
+}
+
+function hashAdminPassword(password, salt) {
+  return crypto.createHmac('sha256', salt).update(password).digest('hex');
+}
+
+function verifyAdminPassword(password) {
+  const config = loadAdminConfig();
+  if (!config || !config.salt || !config.hash) return false;
+  return hashAdminPassword(password, config.salt) === config.hash;
+}
+
+function setAdminPassword(newPassword) {
+  const existing = loadAdminConfig();
+  const salt = crypto.randomBytes(16).toString('hex');
+  const hash = hashAdminPassword(newPassword, salt);
+  const config = { salt, hash, createdAt: (existing && existing.createdAt) || Date.now(), updatedAt: Date.now() };
+  saveAdminConfig(config);
+  return config;
+}
+
+// Bootstrap admin config on startup
+(function initAdminConfig() {
+  if (!loadAdminConfig()) {
+    const defaultPw = 'admin123';
+    setAdminPassword(defaultPw);
+    console.log(`[Admin] Default admin password created: ${defaultPw}`);
+    console.log('[Admin] Please change it from the admin panel.');
+  }
+})();
+
+// Auth middleware
+function adminAuth(req, res, next) {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
+  if (!token || !adminTokens.has(token)) {
+    return res.status(401).json({ ok: false, error: 'unauthorized' });
+  }
+  next();
+}
+
+// POST /admin/login
+app.post('/admin/login', express.json(), (req, res) => {
+  const password = String((req.body && req.body.password) || '');
+  if (!verifyAdminPassword(password)) {
+    return res.status(401).json({ ok: false, error: '密码错误' });
+  }
+  const token = crypto.randomBytes(32).toString('hex');
+  adminTokens.add(token);
+  res.json({ ok: true, token });
+});
+
+// POST /admin/logout
+app.post('/admin/logout', adminAuth, (req, res) => {
+  const authHeader = req.headers.authorization || '';
+  const token = authHeader.slice(7);
+  adminTokens.delete(token);
+  res.json({ ok: true });
+});
+
+// GET /admin/rooms — list all rooms with details
+app.get('/admin/rooms', adminAuth, (req, res) => {
+  try {
+    ensureRoomIndex();
+    const rooms = Object.values(ROOM_INDEX).map(ent => {
+      const online = (global.roomMembers && global.roomMembers.get(ent.id)) ? global.roomMembers.get(ent.id).size : 0;
+      return {
+        id: ent.id,
+        name: ent.name,
+        createdAt: ent.createdAt || null,
+        hasPassword: !!(ent.hash || ent.salt),
+        password: ent.password || null,
+        online
+      };
+    });
+    res.json({ ok: true, rooms });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// POST /admin/rooms — create room
+app.post('/admin/rooms', adminAuth, express.json(), (req, res) => {
+  try {
+    const name = String((req.body && req.body.name) || '').trim();
+    const password = String((req.body && req.body.password) || '').trim();
+    if (!name) return res.status(400).json({ ok: false, error: '房间名不能为空' });
+    if (name.startsWith('_')) return res.status(400).json({ ok: false, error: '房间名不能以下划线开头' });
+    const existing = Object.values(ROOM_INDEX).find(v => v.name === name);
+    if (existing) return res.status(400).json({ ok: false, error: '房间已存在' });
+    const entry = createRoomEntry(name, password);
+    io.emit('rooms-updated');
+    res.json({ ok: true, room: entry });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// DELETE /admin/rooms/:id — delete room with backup
+app.delete('/admin/rooms/:id', adminAuth, async (req, res) => {
+  try {
+    const id = req.params.id;
+    ensureRoomIndex();
+    const entry = ROOM_INDEX[id];
+    if (!entry) return res.status(404).json({ ok: false, error: '房间不存在' });
+    if (entry.name === 'main' || entry.id === 'main') {
+      return res.status(400).json({ ok: false, error: '不能删除主房间' });
+    }
+
+    // Kick active users to main room
+    const mainEntry = Object.values(ROOM_INDEX).find(e => e.name === 'main') || null;
+    const mainRoomId = mainEntry ? mainEntry.id : 'main';
+    try {
+      const sockets = await io.in(id).fetchSockets();
+      for (const s of sockets) {
+        const oldMembers = global.roomMembers && global.roomMembers.get(id);
+        if (oldMembers) oldMembers.delete(s.data.username);
+        s.leave(id);
+        s.data.room = mainRoomId;
+        s.join(mainRoomId);
+        if (!global.roomMembers) global.roomMembers = new Map();
+        const mainMembers = global.roomMembers.get(mainRoomId) || new Set();
+        mainMembers.add(s.data.username);
+        global.roomMembers.set(mainRoomId, mainMembers);
+        const msgs = loadAllMessages(mainRoomId, HISTORY_LIMIT) || [];
+        msgs.forEach(m => { if (m) m.room = mainRoomId; });
+        s.emit('room-deleted', { roomId: id, roomName: entry.name });
+        s.emit('history', msgs);
+      }
+      const mainMembers = global.roomMembers.get(mainRoomId) || new Set();
+      const mainUsers = Array.from(mainMembers);
+      io.to(mainRoomId).emit('presence', { users: mainUsers, event: 'join', user: '', room: mainRoomId });
+    } catch (e) {
+      console.error('Error kicking users from deleted room', e);
+    }
+
+    if (global.roomMembers) global.roomMembers.delete(id);
+
+    // Backup: rename directory to _roomName_timestamp
+    const roomDir = path.join(ROOMS_DIR, entry.path);
+    const safeName = entry.name.replace(/[\/\\:\0]/g, '_');
+    const backupName = `_${safeName}_${Date.now()}`;
+    const backupDir = path.join(ROOMS_DIR, backupName);
+    if (fs.existsSync(roomDir)) {
+      fs.renameSync(roomDir, backupDir);
+    }
+
+    delete ROOM_INDEX[id];
+    saveRoomIndex();
+    io.emit('rooms-updated');
+    res.json({ ok: true, backup: backupName });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// POST /admin/rooms/:id/clear — clear chat history
+app.post('/admin/rooms/:id/clear', adminAuth, (req, res) => {
+  try {
+    const id = req.params.id;
+    ensureRoomIndex();
+    const entry = ROOM_INDEX[id];
+    if (!entry) return res.status(404).json({ ok: false, error: '房间不存在' });
+
+    const dir = getRoomDir(id);
+    fs.writeFileSync(path.join(dir, 'messages.json'), '[]', 'utf8');
+    fs.writeFileSync(path.join(dir, 'messages.log'), '', 'utf8');
+    fs.writeFileSync(path.join(dir, 'archives.json'), '[]', 'utf8');
+    try {
+      const files = fs.readdirSync(dir).filter(f => f.startsWith('messages-') && f.endsWith('.json.gz'));
+      for (const f of files) fs.unlinkSync(path.join(dir, f));
+    } catch (e) { /* ignore */ }
+
+    io.to(id).emit('history', []);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// PUT /admin/rooms/:id/password — set/change room password
+app.put('/admin/rooms/:id/password', adminAuth, express.json(), (req, res) => {
+  try {
+    const id = req.params.id;
+    const password = String((req.body && req.body.password) || '').trim();
+    if (!password) return res.status(400).json({ ok: false, error: '密码不能为空' });
+    ensureRoomIndex();
+    const entry = ROOM_INDEX[id];
+    if (!entry) return res.status(404).json({ ok: false, error: '房间不存在' });
+
+    const salt = crypto.randomBytes(8).toString('hex');
+    const hash = crypto.createHmac('sha256', salt).update(password).digest('hex');
+    entry.salt = salt;
+    entry.hash = hash;
+    entry.password = password;
+    saveRoomIndex();
+
+    const metaFile = path.join(getRoomDir(id), 'meta.json');
+    if (fs.existsSync(metaFile)) {
+      try {
+        const meta = JSON.parse(fs.readFileSync(metaFile, 'utf8') || '{}');
+        meta.salt = salt; meta.hash = hash; meta.password = password;
+        fs.writeFileSync(metaFile, JSON.stringify(meta, null, 2), 'utf8');
+      } catch (e) { /* ignore */ }
+    }
+
+    io.emit('rooms-updated');
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// DELETE /admin/rooms/:id/password — remove room password
+app.delete('/admin/rooms/:id/password', adminAuth, (req, res) => {
+  try {
+    const id = req.params.id;
+    ensureRoomIndex();
+    const entry = ROOM_INDEX[id];
+    if (!entry) return res.status(404).json({ ok: false, error: '房间不存在' });
+
+    delete entry.salt;
+    delete entry.hash;
+    delete entry.password;
+    saveRoomIndex();
+
+    const metaFile = path.join(getRoomDir(id), 'meta.json');
+    if (fs.existsSync(metaFile)) {
+      try {
+        const meta = JSON.parse(fs.readFileSync(metaFile, 'utf8') || '{}');
+        delete meta.salt; delete meta.hash; delete meta.password;
+        fs.writeFileSync(metaFile, JSON.stringify(meta, null, 2), 'utf8');
+      } catch (e) { /* ignore */ }
+    }
+
+    io.emit('rooms-updated');
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// PUT /admin/config/password — change admin password
+app.put('/admin/config/password', adminAuth, express.json(), (req, res) => {
+  try {
+    const currentPassword = String((req.body && req.body.currentPassword) || '');
+    const newPassword = String((req.body && req.body.newPassword) || '').trim();
+    if (!verifyAdminPassword(currentPassword)) {
+      return res.status(400).json({ ok: false, error: '当前密码错误' });
+    }
+    if (!newPassword) return res.status(400).json({ ok: false, error: '新密码不能为空' });
+    setAdminPassword(newPassword);
+    adminTokens.clear();
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
 });
 
 const PORT = process.env.PORT || 3000;

@@ -1,0 +1,182 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Chat Admin</title>
+    <link rel="stylesheet" href="styles.css" />
+    <style>
+      body { background: #eef2f7; padding: 0; margin: 0; }
+      .admin-wrap { max-width: 900px; margin: 0 auto; padding: 20px; }
+      .admin-header {
+        display: flex; justify-content: space-between; align-items: center;
+        padding: 16px 24px; background: #fff; border-radius: 14px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 16px;
+      }
+      .admin-header h1 { font-size: 18px; color: #1a1a2e; margin: 0; }
+      .admin-header-btns { display: flex; gap: 8px; }
+
+      .admin-card {
+        background: #fff; border-radius: 14px; padding: 20px;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 16px;
+      }
+      .admin-card h3 { margin: 0 0 14px 0; font-size: 15px; color: #1a1a2e; }
+
+      .create-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+      .create-form input { padding: 8px 12px; border: 1px solid #d0dbe6; border-radius: 8px; font-size: 13px; outline: none; }
+      .create-form input:focus { border-color: #4fa3ff; box-shadow: 0 0 0 3px rgba(79,163,255,0.12); }
+
+      .rooms-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+      .rooms-table th { text-align: left; padding: 10px 12px; color: #aab4c2; font-size: 11px; text-transform: uppercase; letter-spacing: 0.8px; border-bottom: 1px solid #edf0f4; font-weight: 700; }
+      .rooms-table td { padding: 10px 12px; border-bottom: 1px solid #f2f4f7; color: #444; vertical-align: middle; }
+      .rooms-table tr:last-child td { border-bottom: none; }
+      .rooms-table tr:hover td { background: #f8fafc; }
+
+      .pw-cell { display: flex; align-items: center; gap: 6px; }
+      .pw-text { font-family: monospace; font-size: 12px; color: #666; background: #f4f6f8; padding: 2px 6px; border-radius: 4px; }
+      .pw-none { font-size: 12px; color: #bbb; }
+
+      .actions { display: flex; gap: 4px; flex-wrap: wrap; }
+      .btn-sm {
+        padding: 4px 10px; border-radius: 6px; font-size: 12px; cursor: pointer;
+        border: 1px solid #d0dbe6; background: #fff; color: #555;
+        transition: background 0.15s, border-color 0.15s; white-space: nowrap;
+      }
+      .btn-sm:hover { background: #f0f3f7; border-color: #b0c4de; }
+      .btn-danger { color: #e74c3c; border-color: #f5c6cb; }
+      .btn-danger:hover { background: #fdf0f0; border-color: #e74c3c; }
+
+      .badge-online { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+      .badge-online.has { background: #e8f5e9; color: #2e7d32; }
+      .badge-online.none { background: #f5f5f5; color: #bbb; }
+
+      .modal-overlay {
+        position: fixed; left: 0; right: 0; top: 0; bottom: 0;
+        background: rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; z-index: 9999;
+      }
+      .modal-overlay.hidden { display: none; }
+      .modal-box {
+        background: #fff; padding: 24px; border-radius: 14px;
+        box-shadow: 0 8px 32px rgba(0,0,0,0.18); width: 380px; max-width: 90%;
+      }
+      .modal-box h3 { margin: 0 0 16px 0; font-size: 16px; color: #1a1a2e; }
+      .modal-box input {
+        width: 100%; padding: 9px 12px; border: 1px solid #d0dbe6; border-radius: 8px;
+        font-size: 14px; outline: none; margin-bottom: 10px; box-sizing: border-box;
+      }
+      .modal-box input:focus { border-color: #4fa3ff; box-shadow: 0 0 0 3px rgba(79,163,255,0.12); }
+      .modal-btns { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+
+      .toast {
+        position: fixed; top: 20px; right: 20px; background: #2a2d35; color: #fff;
+        padding: 10px 18px; border-radius: 10px; font-size: 14px; z-index: 10000;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.15); opacity: 0; transition: opacity 0.2s;
+      }
+      .toast.show { opacity: 0.95; }
+
+      .empty-msg { text-align: center; padding: 30px; color: #bbb; font-size: 14px; }
+
+      @media (max-width: 600px) {
+        .admin-wrap { padding: 10px; }
+        .create-form { flex-direction: column; align-items: stretch; }
+        .rooms-table { font-size: 12px; }
+        .rooms-table th, .rooms-table td { padding: 8px 6px; }
+      }
+    </style>
+  </head>
+  <body>
+    <!-- Login overlay -->
+    <div id="loginOverlay" class="overlay">
+      <div class="login-modal">
+        <h2>管理面板</h2>
+        <input id="adminPwInput" type="password" class="join-input" placeholder="输入管理员密码" style="width:100%; margin-bottom:12px; box-sizing:border-box;" />
+        <div style="text-align:right;">
+          <button id="adminLoginBtn" class="login-btn">登录</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div id="dashboard" class="admin-wrap" style="display:none;">
+      <div class="admin-header">
+        <h1>Chat 管理面板</h1>
+        <div class="admin-header-btns">
+          <button id="changePwBtn" class="btn-secondary">修改管理密码</button>
+          <button id="logoutBtn" class="btn-secondary">退出</button>
+        </div>
+      </div>
+
+      <!-- Create room -->
+      <div class="admin-card">
+        <h3>创建房间</h3>
+        <div class="create-form">
+          <input id="newRoomName" placeholder="房间名称" style="flex:1;min-width:120px;" />
+          <input id="newRoomPw" placeholder="密码（可选）" style="width:120px;" />
+          <button id="createRoomBtn" class="btn-primary">创建</button>
+        </div>
+      </div>
+
+      <!-- Room list -->
+      <div class="admin-card">
+        <h3>房间管理</h3>
+        <div id="roomTableWrap">
+          <table class="rooms-table">
+            <thead>
+              <tr>
+                <th>房间名</th>
+                <th>在线</th>
+                <th>密码</th>
+                <th>创建时间</th>
+                <th>操作</th>
+              </tr>
+            </thead>
+            <tbody id="roomsBody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- Change room password modal -->
+    <div id="roomPwModal" class="modal-overlay" style="display:none;">
+      <div class="modal-box">
+        <h3 id="roomPwTitle">修改房间密码</h3>
+        <input id="roomPwInput" type="text" placeholder="输入新密码" />
+        <div class="modal-btns">
+          <button id="roomPwCancel" class="btn-secondary">取消</button>
+          <button id="roomPwConfirm" class="btn-primary">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Change admin password modal -->
+    <div id="adminPwModal" class="modal-overlay" style="display:none;">
+      <div class="modal-box">
+        <h3>修改管理员密码</h3>
+        <input id="curAdminPw" type="password" placeholder="当前密码" />
+        <input id="newAdminPw" type="password" placeholder="新密码" />
+        <input id="newAdminPw2" type="password" placeholder="确认新密码" />
+        <div class="modal-btns">
+          <button id="adminPwCancel" class="btn-secondary">取消</button>
+          <button id="adminPwConfirm" class="btn-primary">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Confirm modal -->
+    <div id="confirmModal" class="modal-overlay" style="display:none;">
+      <div class="modal-box">
+        <h3 id="confirmTitle">确认</h3>
+        <p id="confirmMsg" style="color:#555;font-size:14px;margin:0 0 4px 0;"></p>
+        <div class="modal-btns">
+          <button id="confirmCancel" class="btn-secondary">取消</button>
+          <button id="confirmOk" class="btn-primary">确定</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast"></div>
+
+    <script src="admin.js"></script>
+  </body>
+</html>
