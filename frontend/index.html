@@ -4,6 +4,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Simple Chat</title>
+    <link rel="icon" type="image/png" href="favicon.png" />
     <link rel="stylesheet" href="styles.css" />
   </head>
   <body>
@@ -51,6 +52,10 @@
           </div>
         </div>
         <div class="composer">
+          <div id="pastePreview" class="paste-preview" style="display:none;">
+            <img id="pasteImg" />
+            <button id="pasteRemove" class="paste-remove" title="移除图片">&times;</button>
+          </div>
           <div class="right-controls">
             <textarea id="msgInput" placeholder="输入消息，按 Enter 发送；Mac: ⌘+Enter 换行，Windows: Ctrl+Enter 换行"></textarea>
             <input type="file" id="fileInput" style="display:none" />

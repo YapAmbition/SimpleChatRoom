@@ -562,16 +562,45 @@ joinRoomBtn.addEventListener('click', async () => {
   }
 });
 
-sendBtn.addEventListener('click', () => {
+sendBtn.addEventListener('click', async () => {
   if (!myName) return notify('请先登录');
   const text = msgInput.value.trim();
-  if (!text) return;
-  socket.emit('send', text);
+  const hasPendingImage = !!pendingPasteFile;
+  if (!text && !hasPendingImage) return;
+
+  // send pending pasted image first
+  if (hasPendingImage) {
+    const file = pendingPasteFile;
+    clearPastePreview();
+    const formData = new FormData();
+    formData.append('file', file);
+    try {
+      fileBtn.disabled = true; sendBtn.disabled = true;
+      fileBtn.textContent = '...';
+      const res = await fetch(BASE_PATH + '/upload', { method: 'POST', body: formData });
+      const json = await res.json();
+      if (json && json.ok && json.file) {
+        socket.emit('send', { type: 'file', file: json.file });
+      } else {
+        notify(json && json.error ? json.error : '图片上传失败');
+      }
+    } catch (e) {
+      console.error('paste image upload failed', e);
+      notify('图片上传失败');
+    } finally {
+      fileBtn.disabled = false; sendBtn.disabled = false;
+      fileBtn.textContent = '\u{1F4CE}';
+    }
+  }
+
+  // send text if any
+  if (text) {
+    socket.emit('send', text);
+  }
+
   msgInput.value = '';
   msgInput.focus();
-  // force scroll to bottom after sending
   messagesEl.scrollTop = messagesEl.scrollHeight;
-  // clear unread title when we send
   clearUnreadTitle();
 });
 
@@ -616,6 +645,51 @@ fileInput.addEventListener('change', async () => {
   } finally {
     fileBtn.disabled = false;
     fileBtn.textContent = '\u{1F4CE}';
+  }
+});
+
+// Paste image handling: show preview, send on user action
+let pendingPasteFile = null;
+const pastePreview = document.getElementById('pastePreview');
+const pasteImg = document.getElementById('pasteImg');
+const pasteRemove = document.getElementById('pasteRemove');
+
+function clearPastePreview() {
+  pendingPasteFile = null;
+  pasteImg.src = '';
+  pastePreview.style.display = 'none';
+}
+
+pasteRemove.addEventListener('click', () => {
+  clearPastePreview();
+  msgInput.focus();
+});
+
+msgInput.addEventListener('paste', (e) => {
+  const items = e.clipboardData && e.clipboardData.items;
+  if (!items) return;
+  for (const item of items) {
+    if (item.type.startsWith('image/')) {
+      e.preventDefault();
+      if (!myName) return notify('请先登录');
+      const file = item.getAsFile();
+      if (!file) return;
+      if (file.size > maxUploadFileSize) {
+        const maxMB = (maxUploadFileSize / (1024 * 1024)).toFixed(1);
+        notify(`图片大小超过限制 (最大 ${maxMB}MB)`);
+        return;
+      }
+      const ext = file.type.split('/')[1] || 'png';
+      const fname = `clipboard_${Date.now()}.${ext}`;
+      pendingPasteFile = new File([file], fname, { type: file.type });
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        pasteImg.src = ev.target.result;
+        pastePreview.style.display = '';
+      };
+      reader.readAsDataURL(file);
+      return;
+    }
   }
 });
 
