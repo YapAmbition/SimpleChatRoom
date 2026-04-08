@@ -28,7 +28,7 @@ const currentRoomEl = document.getElementById('currentRoom');
 
 let myName = null;
 let currentRoomId = null; // canonical id used for requests
-let currentRoomName = 'main'; // display name
+let currentRoomName = '聊天大厅'; // display name
 // map room id -> display name
 const ROOM_MAP = {};
 let maxUploadFileSize = 10 * 1024 * 1024; // default 10MB, updated from server
@@ -231,8 +231,19 @@ function clearUnreadTitle() {
 window.addEventListener('focus', clearUnreadTitle);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) clearUnreadTitle(); });
 
-// Copy button handler (event delegation on messages container)
+// Click handler (event delegation on messages container: lightbox + copy)
 messagesEl.addEventListener('click', (e) => {
+  // Lightbox: clicking on image preview opens lightbox
+  const imgEl = e.target.closest('.file-preview');
+  if (imgEl && imgEl.dataset.full) {
+    e.preventDefault();
+    e.stopPropagation();
+    const lb = document.getElementById('lightbox');
+    document.getElementById('lightboxImg').src = imgEl.dataset.full;
+    lb.style.display = 'flex';
+    return;
+  }
+  // Copy button
   const btn = e.target.closest('.copy-btn');
   if (!btn) return;
   const text = btn.getAttribute('data-copy') || '';
@@ -283,12 +294,14 @@ function renderBubbleContent(m) {
     const icon = getFileIcon(f.mimetype);
     const isImage = f.mimetype && f.mimetype.startsWith('image/');
     const fileUrl = esc(BASE_PATH + f.url);
-    let fileHtml = `<a class="file-message" href="${fileUrl}" target="_blank" download="${esc(f.name)}">`;
     if (isImage) {
-      fileHtml += `<img class="file-preview" src="${fileUrl}" alt="${esc(f.name)}" />`;
-    } else {
-      fileHtml += `<span class="file-icon">${icon}</span>`;
+      let fileHtml = `<div class="file-message file-message-img">`;
+      fileHtml += `<img class="file-preview" src="${fileUrl}" alt="${esc(f.name)}" data-full="${fileUrl}" />`;
+      fileHtml += `</div>`;
+      return metaHtml + fileHtml;
     }
+    let fileHtml = `<a class="file-message" href="${fileUrl}" target="_blank" download="${esc(f.name)}">`;
+    fileHtml += `<span class="file-icon">${icon}</span>`;
     fileHtml += `<span class="file-info"><span class="file-name">${esc(f.name)}</span><span class="file-size">${formatFileSize(f.size)}</span></span>`;
     fileHtml += `</a>`;
     return metaHtml + fileHtml;
@@ -398,8 +411,8 @@ loginBtn.addEventListener('click', () => {
     const cfgJson = await cfgRes.json();
     if (cfgJson && cfgJson.ok && cfgJson.maxFileSize) maxUploadFileSize = cfgJson.maxFileSize;
   } catch (e) { /* use default */ }
-  const mainId = Object.keys(ROOM_MAP).find(k => ROOM_MAP[k] === 'main');
-  currentRoomId = mainId || 'main';
+  const mainId = Object.keys(ROOM_MAP).find(k => ROOM_MAP[k] === '聊天大厅');
+  currentRoomId = mainId || '聊天大厅';
     } else {
       // login rejected (duplicate name or other error)
       notify((res && res.error) ? res.error : '登录失败');
@@ -693,6 +706,16 @@ msgInput.addEventListener('paste', (e) => {
   }
 });
 
+// Lightbox close handlers
+(function() {
+  var lightbox = document.getElementById('lightbox');
+  var lightboxClose = document.getElementById('lightboxClose');
+  function closeLightbox() { lightbox.style.display = 'none'; document.getElementById('lightboxImg').src = ''; }
+  lightboxClose.addEventListener('click', closeLightbox);
+  lightbox.addEventListener('click', function(e) { if (e.target === lightbox) closeLightbox(); });
+  document.addEventListener('keydown', function(e) { if (e.key === 'Escape' && lightbox.style.display !== 'none') closeLightbox(); });
+})();
+
 // IME composition handling: do not send message when composing (user selecting IME candidates)
 let isComposing = false;
 msgInput.addEventListener('compositionstart', () => { isComposing = true; });
@@ -751,7 +774,7 @@ messagesEl.addEventListener('scroll', async () => {
   loadingOlder = true;
   const params = new URLSearchParams();
   params.set('limit', '50');
-  params.set('room', currentRoomId || currentRoomName || 'main');
+  params.set('room', currentRoomId || currentRoomName || '聊天大厅');
   params.set('before', oldestTs);
   try {
     const prevHeight = messagesEl.scrollHeight;
@@ -774,10 +797,10 @@ messagesEl.addEventListener('scroll', async () => {
 // Admin: room deleted by admin — switch to main room
 socket.on('room-deleted', (data) => {
   notify(`房间 "${data.roomName}" 已被管理员删除，已自动回到主房间`);
-  currentRoomId = 'main';
-  currentRoomName = 'main';
+  currentRoomId = '聊天大厅';
+  currentRoomName = '聊天大厅';
   const headerRoom = document.getElementById('roomTitle');
-  if (headerRoom) headerRoom.textContent = 'main';
+  if (headerRoom) headerRoom.textContent = '聊天大厅';
   loadRooms();
 });
 

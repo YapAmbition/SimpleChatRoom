@@ -24,7 +24,7 @@
       <div id="chatBox" class="hidden chat-dimmed">
         <div class="header">
           <div class="header-left">
-            <div id="roomTitle" class="room-title">主房间</div>
+            <div id="roomTitle" class="room-title">聊天大厅</div>
             <div id="roomSubtitle" class="room-sub">在线人数：<span id="roomCount">0</span></div>
           </div>
           <div class="header-right">
@@ -75,6 +75,11 @@
           </div>
         </div>
       </div>
+    </div>
+    <!-- Lightbox for image preview -->
+    <div id="lightbox" style="display:none;">
+      <img id="lightboxImg" />
+      <button id="lightboxClose" title="关闭">&times;</button>
     </div>
 
     <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>

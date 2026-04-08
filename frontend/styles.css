@@ -533,4 +533,51 @@ body {
 .file-message .file-info { display: flex; flex-direction: column; min-width: 0; }
 .file-message .file-name { font-size: 14px; font-weight: 600; color: #1e88ff; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-message .file-size { font-size: 12px; color: #999; }
-.file-message .file-preview { max-width: 200px; max-height: 150px; border-radius: 8px; object-fit: contain; }
+.file-message .file-preview { max-width: 200px; max-height: 150px; border-radius: 8px; object-fit: contain; cursor: pointer; }
+
+/* Image-only file message: no background/border */
+.file-message-img {
+  background: none;
+  border: none;
+  padding: 0;
+  margin-top: 4px;
+}
+.file-message-img:hover { background: none; }
+
+/* ===== Lightbox ===== */
+#lightbox {
+  position: fixed;
+  left: 0; right: 0; top: 0; bottom: 0;
+  background: rgba(0,0,0,0.85);
+  z-index: 99999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: zoom-out;
+}
+#lightbox img {
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 4px 30px rgba(0,0,0,0.5);
+  cursor: default;
+}
+#lightboxClose {
+  position: absolute;
+  top: 16px;
+  right: 20px;
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  font-size: 22px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+}
+#lightboxClose:hover { background: rgba(255,255,255,0.3); }

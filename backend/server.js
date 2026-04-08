@@ -24,6 +24,7 @@ app.get('/rooms', (req, res) => {
   try {
     ensureRoomIndex();
     const rooms = Object.values(ROOM_INDEX).map(ent => ({ name: ent.name, hasPassword: !!ent.hash, createdAt: ent.createdAt || null, id: ent.id }));
+    rooms.sort((a, b) => (a.name === '聊天大厅' ? -1 : b.name === '聊天大厅' ? 1 : 0));
     res.json({ ok: true, rooms });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e) });
@@ -84,7 +85,7 @@ function verifyRoomPassword(room, password) {
 // GET /messages?room=ROOM&before=ISO&limit=N
 app.get('/messages', (req, res) => {
   try {
-    const room = String(req.query.room || '').trim() || 'main';
+    const room = String(req.query.room || '').trim() || '聊天大厅';
     const before = req.query.before ? new Date(req.query.before).toISOString() : null;
     const limit = Math.min(parseInt(req.query.limit || String(HISTORY_LIMIT), 10), 1000);
     // load deduplicated messages and then filter by before/limit
@@ -106,8 +107,8 @@ function getRoomDir(room) {
   const entry = findRoomEntry(room);
   if (entry) return path.join(DATA_DIR, 'rooms', entry.path);
   // legacy fallback: encoded or sanitized dir naming
-  const encName = encodeURIComponent(String(room || 'main'));
-  const legacyName = String(room || 'main').replace(/[^a-zA-Z0-9_-]/g, '_');
+  const encName = encodeURIComponent(String(room || '聊天大厅'));
+  const legacyName = String(room || '聊天大厅').replace(/[^a-zA-Z0-9_-]/g, '_');
   const encPath = path.join(DATA_DIR, 'rooms', encName);
   const legacyPath = path.join(DATA_DIR, 'rooms', legacyName);
   if (fs.existsSync(encPath)) return encPath;
@@ -490,7 +491,7 @@ function rotateIfNeeded(room) {
     const totalMsgs = (Array.isArray(snapshot) ? snapshot.length : 0) + readLogLines(room).length;
     const now = Date.now();
     if (logSize >= MAX_FILE_SIZE || totalMsgs >= MAX_MESSAGES || (now - lastCompact) >= COMPACT_AFTER_MS) {
-      compactAndRotate(room || 'main');
+      compactAndRotate(room || '聊天大厅');
       lastCompact = Date.now();
     }
   } catch (e) {
@@ -500,7 +501,7 @@ function rotateIfNeeded(room) {
 
 function appendMessage(msg, room) {
   try {
-    const r = room || 'main';
+    const r = room || '聊天大厅';
     ensureRoomFiles(r);
     const line = JSON.stringify(msg) + '\n';
     fs.appendFileSync(roomFile(r, 'messages.log'), line, 'utf8');
@@ -529,8 +530,8 @@ io.on('connection', (socket) => {
       cb && cb({ ok: true, username: socket.data.username });
   // default room = main (use id from ROOM_INDEX if available)
   ensureRoomIndex();
-  const mainEntry = Object.values(ROOM_INDEX).find(e => e.name === 'main') || null;
-  const defaultRoomId = mainEntry ? mainEntry.id : 'main';
+  const mainEntry = Object.values(ROOM_INDEX).find(e => e.name === '聊天大厅') || null;
+  const defaultRoomId = mainEntry ? mainEntry.id : '聊天大厅';
   socket.data.room = defaultRoomId;
   // register in onlineMap
   global.onlineMap.set(socket.id, socket.data.username);
@@ -574,7 +575,7 @@ io.on('connection', (socket) => {
         if (!verifyRoomPassword(r, password)) return callback && callback({ ok: false, error: 'invalid password' });
       }
   // perform join using canonical room id (use ent.id) to avoid name/id mixing
-  socket.leave(socket.data.room || 'main');
+  socket.leave(socket.data.room || '聊天大厅');
   socket.data.room = ent.id;
   socket.join(ent.id);
   // ensure files exist for the entry (use id)
@@ -625,7 +626,7 @@ io.on('connection', (socket) => {
 
   socket.on('send', (data) => {
     const username = socket.data.username || '匿名';
-    const room = socket.data.room || 'main';
+    const room = socket.data.room || '聊天大厅';
     const msg = {
       id: Date.now() + '-' + Math.random().toString(36).slice(2, 9),
       user: username,
@@ -648,7 +649,7 @@ io.on('connection', (socket) => {
     console.log('client disconnected', socket.id);
     const name = (global.onlineMap && global.onlineMap.get(socket.id)) || null;
     if (global.onlineMap) global.onlineMap.delete(socket.id);
-    const room = socket.data.room || 'main';
+    const room = socket.data.room || '聊天大厅';
     if (global.roomMembers) {
       const members = global.roomMembers.get(room);
       if (members) {
@@ -782,13 +783,13 @@ app.delete('/admin/rooms/:id', adminAuth, async (req, res) => {
     ensureRoomIndex();
     const entry = ROOM_INDEX[id];
     if (!entry) return res.status(404).json({ ok: false, error: '房间不存在' });
-    if (entry.name === 'main' || entry.id === 'main') {
+    if (entry.name === '聊天大厅' || entry.id === '聊天大厅') {
       return res.status(400).json({ ok: false, error: '不能删除主房间' });
     }
 
     // Kick active users to main room
-    const mainEntry = Object.values(ROOM_INDEX).find(e => e.name === 'main') || null;
-    const mainRoomId = mainEntry ? mainEntry.id : 'main';
+    const mainEntry = Object.values(ROOM_INDEX).find(e => e.name === '聊天大厅') || null;
+    const mainRoomId = mainEntry ? mainEntry.id : '聊天大厅';
     try {
       const sockets = await io.in(id).fetchSockets();
       for (const s of sockets) {

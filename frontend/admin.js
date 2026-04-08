@@ -126,7 +126,7 @@ function renderRooms(rooms) {
     return;
   }
   tbody.innerHTML = rooms.map(r => {
-    const isMain = r.name === 'main' || r.id === 'main';
+    const isMain = r.name === '聊天大厅' || r.id === '聊天大厅';
     const onlineBadge = r.online > 0
       ? `<span class="badge-online has">${r.online} 在线</span>`
       : `<span class="badge-online none">0</span>`;
