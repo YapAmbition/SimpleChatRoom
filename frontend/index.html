@@ -56,7 +56,23 @@
             <img id="pasteImg" />
             <button id="pasteRemove" class="paste-remove" title="移除图片">&times;</button>
           </div>
+          <!-- Emoji / Sticker panel -->
+          <div id="emojiPanel" class="emoji-panel" style="display:none;">
+            <div class="emoji-tabs">
+              <button class="emoji-tab active" data-tab="emoji">Emoji</button>
+              <button class="emoji-tab" data-tab="sticker">表情包</button>
+            </div>
+            <div id="emojiContent" class="emoji-content">
+              <div class="emoji-categories" id="emojiCategories"></div>
+              <div class="emoji-grid" id="emojiGrid"></div>
+            </div>
+            <div id="stickerContent" class="sticker-content" style="display:none;">
+              <div class="sticker-grid" id="stickerGrid"></div>
+            </div>
+            <input type="file" id="stickerInput" accept="image/*" style="display:none" />
+          </div>
           <div class="right-controls">
+            <button id="emojiBtn" class="emoji-btn" title="表情">&#x1F600;</button>
             <textarea id="msgInput" placeholder="输入消息，按 Enter 发送；Mac: ⌘+Enter 换行，Windows: Ctrl+Enter 换行"></textarea>
             <input type="file" id="fileInput" style="display:none" />
             <button id="fileBtn" class="file-btn" title="发送文件">&#128206;</button>

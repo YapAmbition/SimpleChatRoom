@@ -32,6 +32,18 @@ let currentRoomName = '聊天大厅'; // display name
 // map room id -> display name
 const ROOM_MAP = {};
 let maxUploadFileSize = 10 * 1024 * 1024; // default 10MB, updated from server
+// ===== Emoji Data =====
+const EMOJI_DATA = [
+  { icon: '\u{1F600}', label: '笑脸', emojis: ['😀','😃','😄','😁','😆','😅','🤣','😂','🙂','🙃','😉','😊','😇','🥰','😍','🤩','😘','😗','😚','😙','🥲','😋','😛','😜','🤪','😝','🤑','🤗','🤭','🤫','🤔','🤐','😐','😑','😶','😏','😒','🙄','😬','🤥','😌','😔','😪','🤤','😴','😷','🤒','🤕','🤢','🤮','🤧','🥵','🥶','🥴','😵','🤯','🤠','🥳','🥸','😎','🤓','🧐','😕','😟','🙁','😮','😯','😲','😳','🥺','🥹','😦','😧','😨','😰','😥','😢','😭','😱','😖','😣','😞','😓','😩','😫','🥱','😤','😡','😠','🤬','😈','👿','💀','💩','🤡','👹','👺','👻','👽','👾','🤖'] },
+  { icon: '\u{1F44B}', label: '手势', emojis: ['👋','🤚','🖐','✋','🖖','👌','🤌','🤏','✌️','🤞','🤟','🤘','🤙','👈','👉','👆','🖕','👇','☝️','👍','👎','✊','👊','🤛','🤜','👏','🙌','👐','🤲','🤝','🙏','✍️','💅','🤳','💪','🦾','🦿','🦵','🦶','👂','👃','👀','👁','👅','👄','💋','🧠','❤️','🧡','💛','💚','💙','💜','🖤','🤍','🤎','💔','❤️‍🔥','💕','💞','💓','💗','💖','💘','💝','💟'] },
+  { icon: '\u{1F431}', label: '动物', emojis: ['🐶','🐱','🐭','🐹','🐰','🦊','🐻','🐼','🐨','🐯','🦁','🐮','🐷','🐸','🐵','🙈','🙉','🙊','🐒','🐔','🐧','🐦','🐤','🦆','🦅','🦉','🦇','🐺','🐗','🐴','🦄','🐝','🐛','🦋','🐌','🐞','🐜','🐢','🐍','🦎','🦖','🦕','🐙','🦑','🦐','🦞','🦀','🐡','🐠','🐟','🐬','🐳','🐋','🦈','🐊','🐅','🐆','🦓','🦍','🐘','🦛','🦏','🐪','🐫','🦒','🦘','🐃','🐂','🐄','🐎','🐖','🐏','🐑','🐐','🦌','🐕','🐩','🐈','🐓','🦃','🦚','🦜','🦢','🦩','🐇','🦝','🦨','🦡','🦫','🦦','🦥','🐁','🐀','🐿','🦔','🐾','🐉','🐲'] },
+  { icon: '\u{1F34E}', label: '食物', emojis: ['🍏','🍎','🍐','🍊','🍋','🍌','🍉','🍇','🍓','🫐','🍈','🍒','🍑','🥭','🍍','🥥','🥝','🍅','🍆','🥑','🥦','🥬','🥒','🌶','🌽','🥕','🧄','🧅','🥔','🍠','🥜','🌰','🍞','🥐','🥖','🥨','🥯','🥞','🧇','🧀','🍖','🍗','🥩','🥓','🍔','🍟','🍕','🌭','🥪','🌮','🌯','🥙','🧆','🥚','🍳','🥘','🍲','🥣','🥗','🍿','🧈','🍱','🍘','🍙','🍚','🍛','🍜','🍝','🍢','🍣','🍤','🍥','🥮','🍡','🥟','🥠','🥡','🍦','🍧','🍨','🍩','🍪','🎂','🍰','🧁','🥧','🍫','🍬','🍭','🍮','🍯','🍼','🥛','☕','🍵','🍶','🍾','🍷','🍸','🍹','🍺','🍻','🥂','🥃','🥤','🧋','🧃'] },
+  { icon: '\u{26BD}', label: '活动', emojis: ['⚽','🏀','🏈','⚾','🥎','🎾','🏐','🏉','🥏','🎱','🏓','🏸','🏒','🏑','🥍','🏏','⛳','🏹','🎣','🥊','🥋','🎽','🛹','🛼','🛷','⛸','🥌','🎿','🏂','🏋️','🤸','🤺','⛹','🤾','🏌','🏇','🧘','🏄','🏊','🤽','🚣','🧗','🚵','🚴','🏆','🥇','🥈','🥉','🏅','🎖','🎗','🎪','🎭','🎨','🎬','🎤','🎧','🎼','🎹','🥁','🎷','🎺','🎸','🎻','🎲','♟','🎯','🎳','🎮','🎰','🧩'] },
+  { icon: '\u{2708}', label: '旅行', emojis: ['🚗','🚕','🚙','🚌','🚎','🏎','🚓','🚑','🚒','🚐','🛻','🚚','🚛','🚜','🏍','🛵','🚲','🛴','🚏','🚨','🚥','🚦','🛑','🚧','⛽','🚢','⛵','🚤','🛳','🚂','🚃','🚄','🚅','🚆','🚇','🚈','🚉','✈️','🛫','🛬','🛩','💺','🚀','🛸','🚁','🏠','🏡','🏘','🏢','🏣','🏥','🏦','🏨','🏩','🏪','🏫','🏬','🏭','🏯','🏰','💒','🗼','🗽','⛪','🕌','🕍','⛩','⛲','🌁','🌃','🌄','🌅','🌆','🌇','🌉'] },
+  { icon: '\u{1F4A1}', label: '物品', emojis: ['💡','🔦','🕯','🧯','💰','💳','💎','⚖️','🧰','🔧','🔩','⚙️','🧲','🔫','💣','🔪','🗡','🛡','🚬','🏺','🔮','📿','🧿','💈','⚗️','🔭','🔬','💊','💉','🩸','🩹','🩺','🏷','🔖','📰','📮','✉️','📧','📩','📨','📤','📥','📦','📫','📪','📬','📭','📄','📃','📋','📝','📁','📂','📅','📆','📇','📈','📉','📊','📌','📍','📎','🖇','📏','📐','✂️','🗃','🗄','🗑','🔒','🔓','🔑','🗝'] },
+  { icon: '\u{2764}', label: '符号', emojis: ['☮️','✝️','☪️','☸️','✡️','🔯','☯️','☦️','⛎','♈','♉','♊','♋','♌','♍','♎','♏','♐','♑','♒','♓','🆔','⚛️','☢️','☣️','🈶','🈚','✴️','🆚','💮','🉐','🈴','🈵','🈹','🈲','🅰️','🅱️','🆎','🆑','🅾️','🆘','❌','⭕','🛑','⛔','📛','🚫','💯','💢','♨️','🚷','🚯','🚳','🚱','🔞','📵','🚭','❗','❕','❓','❔','‼️','⁉️','⚠️','🚸','🔱','⚜️','♻️','✅','💠','🌐','💤','🏧','🚾','♿','🅿️','🈳','🔣','ℹ️','🔤','🔡','🔠','🆖','🆗','🆙','🆒','🆕','🆓','0️⃣','1️⃣','2️⃣','3️⃣','4️⃣','5️⃣','6️⃣','7️⃣','8️⃣','9️⃣','🔟','🔢','#️⃣','*️⃣','▶️','⏸','⏹','⏺','⏭','⏮','⏩','⏪','🔼','🔽','➡️','⬅️','⬆️','⬇️','🔀','🔁','🔂','🔄','🎵','🎶','➕','➖','➗','✖️','💲','💱','™️','©️','®️'] }
+];
+
 
 // password modal elements
 const pwModal = document.getElementById('pwModal');
@@ -243,6 +255,17 @@ messagesEl.addEventListener('click', (e) => {
     lb.style.display = 'flex';
     return;
   }
+  // Sticker collect button
+  const collectBtn = e.target.closest('.sticker-collect-btn');
+  if (collectBtn) {
+    e.preventDefault();
+    e.stopPropagation();
+    const url = collectBtn.getAttribute('data-url');
+    if (url && myName) {
+      collectSticker(url, collectBtn);
+    }
+    return;
+  }
   // Copy button
   const btn = e.target.closest('.copy-btn');
   if (!btn) return;
@@ -297,6 +320,10 @@ function renderBubbleContent(m) {
     if (isImage) {
       let fileHtml = `<div class="file-message file-message-img">`;
       fileHtml += `<img class="file-preview" src="${fileUrl}" alt="${esc(f.name)}" data-full="${fileUrl}" />`;
+      // Show "add to my stickers" button for image messages from others
+      if (m.user !== myName) {
+        fileHtml += `<button class="sticker-collect-btn" data-url="${esc(f.url)}" title="添加到我的表情包">+ 收藏</button>`;
+      }
       fileHtml += `</div>`;
       return metaHtml + fileHtml;
     }
@@ -761,8 +788,244 @@ msgInput.addEventListener('keydown', (e) => {
   }
 });
 
-// Emoji picker
-// emoji picker removed
+// ===== Emoji / Sticker Panel =====
+const emojiBtn = document.getElementById('emojiBtn');
+const emojiPanel = document.getElementById('emojiPanel');
+const emojiContent = document.getElementById('emojiContent');
+const stickerContent = document.getElementById('stickerContent');
+const emojiGrid = document.getElementById('emojiGrid');
+const emojiCategories = document.getElementById('emojiCategories');
+const stickerGrid = document.getElementById('stickerGrid');
+const stickerInput = document.getElementById('stickerInput');
+
+let emojiPanelOpen = false;
+let emojiPanelRendered = false;
+let stickerCache = null;
+
+function renderEmojiPanel() {
+  if (emojiPanelRendered) return;
+  emojiPanelRendered = true;
+  // Category strip
+  emojiCategories.innerHTML = '';
+  EMOJI_DATA.forEach((cat, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'emoji-cat-btn' + (i === 0 ? ' active' : '');
+    btn.textContent = cat.icon;
+    btn.title = cat.label;
+    btn.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      emojiCategories.querySelectorAll('.emoji-cat-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      const section = emojiGrid.querySelector('[data-cat="' + i + '"]');
+      if (section) section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    });
+    emojiCategories.appendChild(btn);
+  });
+  // Emoji grid
+  emojiGrid.innerHTML = '';
+  EMOJI_DATA.forEach((cat, i) => {
+    const label = document.createElement('div');
+    label.className = 'emoji-grid-section-label';
+    label.textContent = cat.label;
+    label.setAttribute('data-cat', i);
+    emojiGrid.appendChild(label);
+    const section = document.createElement('div');
+    section.className = 'emoji-grid-section';
+    cat.emojis.forEach(em => {
+      const span = document.createElement('span');
+      span.className = 'emoji-item';
+      span.textContent = em;
+      span.addEventListener('mousedown', (e) => {
+        e.preventDefault();
+        insertEmojiAtCursor(em);
+      });
+      section.appendChild(span);
+    });
+    emojiGrid.appendChild(section);
+  });
+}
+
+function insertEmojiAtCursor(emoji) {
+  const ta = msgInput;
+  const start = ta.selectionStart;
+  const end = ta.selectionEnd;
+  ta.value = ta.value.slice(0, start) + emoji + ta.value.slice(end);
+  const pos = start + emoji.length;
+  ta.selectionStart = ta.selectionEnd = pos;
+  ta.focus();
+}
+
+function toggleEmojiPanel() {
+  if (emojiPanelOpen) {
+    emojiPanel.style.display = 'none';
+    emojiPanelOpen = false;
+  } else {
+    renderEmojiPanel();
+    emojiPanel.style.display = 'flex';
+    emojiPanelOpen = true;
+  }
+}
+
+emojiBtn.addEventListener('click', (e) => {
+  e.stopPropagation();
+  toggleEmojiPanel();
+});
+
+// Close panel when clicking outside
+document.addEventListener('click', (e) => {
+  if (!emojiPanelOpen) return;
+  if (emojiPanel.contains(e.target) || e.target === emojiBtn) return;
+  emojiPanel.style.display = 'none';
+  emojiPanelOpen = false;
+});
+
+// Tab switching
+emojiPanel.addEventListener('click', (e) => {
+  const tab = e.target.closest('.emoji-tab');
+  if (!tab) return;
+  const tabName = tab.dataset.tab;
+  emojiPanel.querySelectorAll('.emoji-tab').forEach(t => t.classList.remove('active'));
+  tab.classList.add('active');
+  if (tabName === 'emoji') {
+    emojiContent.style.display = '';
+    stickerContent.style.display = 'none';
+  } else {
+    emojiContent.style.display = 'none';
+    stickerContent.style.display = '';
+    loadStickers();
+  }
+});
+
+// ===== Sticker logic =====
+async function loadStickers() {
+  try {
+    const params = myName ? '?user=' + encodeURIComponent(myName) : '';
+    const res = await fetch(BASE_PATH + '/stickers' + params);
+    const json = await res.json();
+    if (json && json.ok) {
+      stickerCache = json.stickers || [];
+      renderStickers(stickerCache);
+    }
+  } catch (e) {
+    console.error('loadStickers failed', e);
+  }
+}
+
+function renderStickers(stickers) {
+  stickerGrid.innerHTML = '';
+  stickers.forEach(s => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'sticker-item';
+    const img = document.createElement('img');
+    img.src = BASE_PATH + s.url;
+    img.alt = s.name;
+    img.title = s.name;
+    img.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      sendSticker(s);
+    });
+    wrapper.appendChild(img);
+    // Add delete button for non-built-in stickers
+    if (s.source !== 'built-in') {
+      const delBtn = document.createElement('button');
+      delBtn.className = 'sticker-delete-btn';
+      delBtn.textContent = '\u00d7';
+      delBtn.title = '删除表情包';
+      delBtn.addEventListener('mousedown', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!confirm('确定删除这个表情包？')) return;
+        try {
+          const res = await fetch(BASE_PATH + '/stickers/delete', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: s.id, user: myName })
+          });
+          const json = await res.json();
+          if (json && json.ok) {
+            stickerCache = null;
+            loadStickers();
+          }
+        } catch (err) {
+          console.error('deleteSticker failed', err);
+        }
+      });
+      wrapper.appendChild(delBtn);
+    }
+    stickerGrid.appendChild(wrapper);
+  });
+  // Upload button
+  const uploadBtn = document.createElement('button');
+  uploadBtn.className = 'sticker-upload-btn';
+  uploadBtn.textContent = '+';
+  uploadBtn.title = '上传表情包';
+  uploadBtn.addEventListener('mousedown', (e) => {
+    e.preventDefault();
+    stickerInput.click();
+  });
+  stickerGrid.appendChild(uploadBtn);
+}
+
+function sendSticker(s) {
+  if (!myName) return notify('请先登录');
+  const ext = s.url.split('.').pop().toLowerCase();
+  const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' };
+  socket.emit('send', { type: 'file', file: { url: s.url, name: s.name, size: 0, mimetype: mimeMap[ext] || 'image/png', isSticker: true } });
+  emojiPanel.style.display = 'none';
+  emojiPanelOpen = false;
+  messagesEl.scrollTop = messagesEl.scrollHeight;
+  clearUnreadTitle();
+}
+
+async function collectSticker(url, btn) {
+  try {
+    const res = await fetch(BASE_PATH + '/stickers/collect', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url, user: myName })
+    });
+    const json = await res.json();
+    if (json && json.ok) {
+      btn.textContent = '已收藏';
+      btn.disabled = true;
+      stickerCache = null; // invalidate cache
+      setTimeout(() => { btn.textContent = '+ 收藏'; btn.disabled = false; }, 1500);
+      notify('已添加到我的表情包');
+    } else {
+      notify(json && json.error ? json.error : '收藏失败');
+    }
+  } catch (e) {
+    console.error('collectSticker failed', e);
+    notify('收藏失败');
+  }
+}
+
+stickerInput.addEventListener('change', async () => {
+  const file = stickerInput.files[0];
+  stickerInput.value = '';
+  if (!file) return;
+  if (!file.type.startsWith('image/')) return notify('只能上传图片文件');
+  if (file.size > 2 * 1024 * 1024) return notify('表情包大小不能超过 2MB');
+  const formData = new FormData();
+  formData.append('sticker', file);
+  if (myName) formData.append('owner', myName);
+  try {
+    const res = await fetch(BASE_PATH + '/stickers/upload', { method: 'POST', body: formData });
+    const json = await res.json();
+    if (json && json.ok && json.sticker) {
+      notify('表情包上传成功');
+      if (stickerCache) {
+        stickerCache.push(json.sticker);
+        renderStickers(stickerCache);
+      }
+    } else {
+      notify(json && json.error ? json.error : '上传失败');
+    }
+  } catch (e) {
+    console.error('sticker upload failed', e);
+    notify('表情包上传失败');
+  }
+});
 
 // infinite scroll: load older messages when user scrolls near the top
 let oldestTs = null;

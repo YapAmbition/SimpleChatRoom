@@ -197,6 +197,152 @@ app.get('/upload-config', (req, res) => {
   res.json({ ok: true, maxFileSize: MAX_UPLOAD_FILE_SIZE });
 });
 
+// ===== Sticker system =====
+const STICKERS_DIR = path.join(DATA_DIR, 'stickers');
+const STICKERS_BUILTIN_DIR = path.join(STICKERS_DIR, 'built-in');
+const STICKERS_UPLOADED_DIR = path.join(STICKERS_DIR, 'uploaded');
+const STICKERS_INDEX_FILE = path.join(STICKERS_DIR, 'stickers.json');
+fs.mkdirSync(STICKERS_BUILTIN_DIR, { recursive: true });
+fs.mkdirSync(STICKERS_UPLOADED_DIR, { recursive: true });
+
+function loadStickersIndex() {
+  try {
+    if (fs.existsSync(STICKERS_INDEX_FILE)) return JSON.parse(fs.readFileSync(STICKERS_INDEX_FILE, 'utf8'));
+  } catch (e) { console.error('loadStickersIndex error', e); }
+  return [];
+}
+function saveStickersIndex(arr) {
+  fs.writeFileSync(STICKERS_INDEX_FILE, JSON.stringify(arr, null, 2), 'utf8');
+}
+
+// Sync built-in stickers: scan directory, add new, remove deleted
+function syncBuiltInStickers() {
+  const stickers = loadStickersIndex();
+  const imageExts = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp', '.svg']);
+  const files = fs.readdirSync(STICKERS_BUILTIN_DIR).filter(f => imageExts.has(path.extname(f).toLowerCase()));
+  const existingUrls = new Set(stickers.filter(s => s.source === 'built-in').map(s => s.url));
+  let changed = false;
+  // add new files
+  for (const f of files) {
+    const url = '/stickers/built-in/' + f;
+    if (!existingUrls.has(url)) {
+      stickers.push({ id: 'builtin-' + path.basename(f, path.extname(f)), name: path.basename(f, path.extname(f)), url, source: 'built-in', createdAt: Date.now() });
+      changed = true;
+    }
+  }
+  // remove entries for deleted files
+  const currentFileUrls = new Set(files.map(f => '/stickers/built-in/' + f));
+  const before = stickers.length;
+  const filtered = stickers.filter(s => s.source !== 'built-in' || currentFileUrls.has(s.url));
+  if (filtered.length !== before) changed = true;
+  if (changed) saveStickersIndex(filtered);
+}
+syncBuiltInStickers();
+
+// Serve sticker files
+app.use('/stickers/built-in', express.static(STICKERS_BUILTIN_DIR));
+app.use('/stickers/uploaded', express.static(STICKERS_UPLOADED_DIR));
+
+// GET /stickers — list stickers for a user (built-in + user's own)
+app.get('/stickers', (req, res) => {
+  try {
+    const user = String(req.query.user || '').trim();
+    const all = loadStickersIndex();
+    // return built-in + stickers owned by this user
+    const filtered = user ? all.filter(s => s.source === 'built-in' || s.owner === user) : all;
+    res.json({ ok: true, stickers: filtered });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// POST /stickers/upload — upload a new sticker image
+const stickerStorage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, STICKERS_UPLOADED_DIR),
+  filename: (req, file, cb) => {
+    const ext = path.extname(file.originalname);
+    const base = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_\u4e00-\u9fff-]/g, '_');
+    const unique = Date.now() + '-' + crypto.randomBytes(4).toString('hex');
+    cb(null, `${unique}_${base}${ext}`);
+  }
+});
+const stickerUpload = multer({
+  storage: stickerStorage,
+  limits: { fileSize: 2 * 1024 * 1024 },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype && file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(new Error('只能上传图片文件'));
+  }
+});
+
+app.post('/stickers/upload', (req, res) => {
+  stickerUpload.single('sticker')(req, res, (err) => {
+    if (err) {
+      if (err.code === 'LIMIT_FILE_SIZE') return res.status(413).json({ ok: false, error: '表情包大小不能超过 2MB' });
+      return res.status(400).json({ ok: false, error: err.message || '上传失败' });
+    }
+    if (!req.file) return res.status(400).json({ ok: false, error: '没有选择文件' });
+    const owner = String(req.body.owner || req.query.owner || '').trim();
+    const sticker = {
+      id: 'uploaded-' + Date.now() + '-' + crypto.randomBytes(4).toString('hex'),
+      name: path.basename(req.file.originalname, path.extname(req.file.originalname)),
+      url: '/stickers/uploaded/' + req.file.filename,
+      source: 'uploaded',
+      owner: owner || undefined,
+      createdAt: Date.now()
+    };
+    const stickers = loadStickersIndex();
+    stickers.push(sticker);
+    saveStickersIndex(stickers);
+    res.json({ ok: true, sticker });
+  });
+});
+
+// POST /stickers/collect — collect an existing sticker to own collection
+app.post('/stickers/collect', express.json(), (req, res) => {
+  try {
+    const { url, user } = req.body;
+    if (!url || !user) return res.status(400).json({ ok: false, error: '缺少参数' });
+    const stickers = loadStickersIndex();
+    // check if user already has this sticker
+    if (stickers.some(s => s.url === url && s.owner === user)) {
+      return res.json({ ok: true, message: '已存在' });
+    }
+    // find the original sticker to get its name
+    const original = stickers.find(s => s.url === url);
+    const name = original ? original.name : 'sticker';
+    const sticker = {
+      id: 'collected-' + Date.now() + '-' + crypto.randomBytes(4).toString('hex'),
+      name,
+      url,
+      source: 'collected',
+      owner: user,
+      createdAt: Date.now()
+    };
+    stickers.push(sticker);
+    saveStickersIndex(stickers);
+    res.json({ ok: true, sticker });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// POST /stickers/delete — delete a sticker from user's collection
+app.post('/stickers/delete', express.json(), (req, res) => {
+  try {
+    const { id, user } = req.body;
+    if (!id || !user) return res.status(400).json({ ok: false, error: '缺少参数' });
+    let stickers = loadStickersIndex();
+    const idx = stickers.findIndex(s => s.id === id && s.owner === user);
+    if (idx === -1) return res.status(404).json({ ok: false, error: '未找到该表情包' });
+    stickers.splice(idx, 1);
+    saveStickersIndex(stickers);
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
 // room index file: stores mapping from room id -> metadata { name, path, createdAt, salt?, hash? }
 const ROOM_INDEX_FILE = path.join(ROOMS_DIR, 'room.json');
 let ROOM_INDEX = null;
@@ -637,6 +783,7 @@ io.on('connection', (socket) => {
     if (typeof data === 'object' && data !== null && data.type === 'file') {
       msg.type = 'file';
       msg.file = { url: data.file.url, name: data.file.name, size: data.file.size, mimetype: data.file.mimetype };
+      if (data.file.isSticker) msg.file.isSticker = true;
       msg.text = `[文件] ${data.file.name}`;
     } else {
       msg.text = typeof data === 'string' ? data : String(data || '');
