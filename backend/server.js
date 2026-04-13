@@ -82,15 +82,24 @@ function verifyRoomPassword(room, password) {
   }
 }
 
-// GET /messages?room=ROOM&before=ISO&limit=N
+// GET /messages?room=ROOM&before=ISO&after=MSGID&limit=N
 app.get('/messages', (req, res) => {
   try {
     const room = String(req.query.room || '').trim() || '聊天大厅';
     const before = req.query.before ? new Date(req.query.before).toISOString() : null;
+    const afterId = req.query.after ? String(req.query.after).trim() : null;
     const limit = Math.min(parseInt(req.query.limit || String(HISTORY_LIMIT), 10), 1000);
-    // load deduplicated messages and then filter by before/limit
+    // load deduplicated messages and then filter by before/after/limit
     const all = loadAllMessages(room, null);
     let filtered = all;
+    if (afterId) {
+      // find the index of the message with the given id, return everything after it
+      const idx = all.findIndex(m => m.id === afterId);
+      filtered = idx >= 0 ? all.slice(idx + 1) : all;
+      // when using after, return oldest first and take from start
+      const result = filtered.slice(0, limit);
+      return res.json({ ok: true, count: result.length, messages: result });
+    }
     if (before) filtered = all.filter(m => new Date(m.ts) < new Date(before));
     const result = filtered.slice(-limit);
     res.json({ ok: true, count: result.length, messages: result });
@@ -664,6 +673,56 @@ function appendMessage(msg, room) {
   }
 }
 
+// ========== CLI API Endpoints ==========
+
+// POST /api/login — authenticate CLI client, return token
+app.post('/api/login', express.json(), (req, res) => {
+  try {
+    const room = String((req.body && req.body.room) || '').trim();
+    const user = String((req.body && req.body.user) || '').trim();
+    const password = (req.body && req.body.password) || '';
+    if (!room || !user) return res.status(400).json({ ok: false, error: 'room and user required' });
+
+    ensureRoomIndex();
+    const entry = findRoomEntry(room);
+    if (!entry) return res.status(404).json({ ok: false, error: 'room not found' });
+
+    // verify password if room has one
+    if (entry.hash && entry.salt) {
+      if (!password) return res.status(401).json({ ok: false, error: 'password required' });
+      if (!verifyRoomPassword(room, password)) return res.status(401).json({ ok: false, error: 'invalid password' });
+    }
+
+    const token = crypto.randomBytes(32).toString('hex');
+    cliTokens.set(token, { room: entry.id, roomName: entry.name, user });
+    res.json({ ok: true, token, room: entry.id, roomName: entry.name, user });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
+// POST /api/send — send a message via HTTP (requires CLI token)
+app.post('/api/send', cliAuth, express.json(), (req, res) => {
+  try {
+    const { room, user } = req.cliSession;
+    const text = String((req.body && req.body.text) || '').trim();
+    if (!text) return res.status(400).json({ ok: false, error: 'text required' });
+
+    const msg = {
+      id: Date.now() + '-' + Math.random().toString(36).slice(2, 9),
+      user,
+      ts: new Date().toISOString(),
+      room,
+      text
+    };
+    appendMessage(msg, room);
+    io.to(room).emit('message', msg);
+    res.json({ ok: true, message: msg });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: String(e) });
+  }
+});
+
 io.on('connection', (socket) => {
   console.log('client connected', socket.id);
   // presence map maintained globally
@@ -820,6 +879,19 @@ io.on('connection', (socket) => {
 
 const ADMIN_CONFIG_FILE = path.join(DATA_DIR, 'admin-config.json');
 const adminTokens = new Set();
+
+// ========== CLI API Token Store ==========
+const cliTokens = new Map(); // token -> { room, roomName, user }
+
+function cliAuth(req, res, next) {
+  const auth = req.headers.authorization;
+  if (!auth || !auth.startsWith('Bearer ')) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  const token = auth.slice(7);
+  const session = cliTokens.get(token);
+  if (!session) return res.status(401).json({ ok: false, error: 'unauthorized' });
+  req.cliSession = session;
+  next();
+}
 
 function loadAdminConfig() {
   try {
