@@ -25,7 +25,7 @@
         <div class="header">
           <div class="header-left">
             <div id="roomTitle" class="room-title">聊天大厅</div>
-            <div id="roomSubtitle" class="room-sub">在线人数：<span id="roomCount">0</span></div>
+            <div id="roomSubtitle" class="room-sub">在线人数：<span id="roomCount">0</span> <span id="connStatus" class="conn-status" title="连接中...">●</span></div>
           </div>
           <div class="header-right">
             <div class="user-chip">
@@ -42,6 +42,7 @@
           </div>
         </div>
         <div class="layout">
+          <div id="connBanner" class="conn-banner" style="display:none;">连接已断开，正在尝试重连...</div>
           <div id="messages" class="messages"></div>
           <div id="sidebar" class="sidebar">
             <h4>房间列表</h4>

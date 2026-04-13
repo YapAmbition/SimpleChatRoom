@@ -3,6 +3,39 @@
 const BASE_PATH = window.location.pathname.replace(/\/+$/, '');
 const socket = io({ path: BASE_PATH + '/socket.io' });
 
+// Connection status indicator
+const connStatusEl = document.getElementById('connStatus');
+const connBanner = document.getElementById('connBanner');
+let isConnected = false;
+function setConnStatus(state) {
+  isConnected = (state === 'connected');
+  if (connStatusEl) {
+    connStatusEl.className = 'conn-status ' + state;
+    const labels = { connected: '已连接', disconnected: '已断开', connecting: '连接中...' };
+    connStatusEl.title = labels[state] || state;
+  }
+  if (connBanner) {
+    connBanner.style.display = isConnected ? 'none' : 'block';
+    connBanner.textContent = state === 'connecting' ? '正在重新连接...' : '连接已断开，正在尝试重连...';
+  }
+}
+setConnStatus('connecting');
+
+// Auto re-login and re-join room after reconnect
+socket.on('connect', () => {
+  setConnStatus('connected');
+  if (myName && currentRoomId) {
+    socket.emit('login', myName, (res) => {
+      if (res && res.ok) {
+        socket.emit('join-room', currentRoomId, null, () => {});
+      }
+    });
+  }
+});
+socket.on('disconnect', () => { setConnStatus('disconnected'); });
+socket.on('connect_error', () => { setConnStatus('disconnected'); });
+socket.io.on('reconnect_attempt', () => { setConnStatus('connecting'); });
+
 const loginBox = document.getElementById('loginBox');
 const chatBox = document.getElementById('chatBox');
 const overlay = document.getElementById('overlay');
@@ -602,6 +635,16 @@ joinRoomBtn.addEventListener('click', async () => {
   }
 });
 
+// Guarded send: only emit when connected, otherwise notify user
+function guardedSend(data) {
+  if (!socket.connected) {
+    notify('连接已断开，无法发送');
+    return false;
+  }
+  socket.emit('send', data);
+  return true;
+}
+
 sendBtn.addEventListener('click', async () => {
   if (!myName) return notify('请先登录');
   const text = msgInput.value.trim();
@@ -620,7 +663,7 @@ sendBtn.addEventListener('click', async () => {
       const res = await fetch(BASE_PATH + '/upload', { method: 'POST', body: formData });
       const json = await res.json();
       if (json && json.ok && json.file) {
-        socket.emit('send', { type: 'file', file: json.file });
+        guardedSend({ type: 'file', file: json.file });
       } else {
         notify(json && json.error ? json.error : '图片上传失败');
       }
@@ -635,7 +678,7 @@ sendBtn.addEventListener('click', async () => {
 
   // send text if any
   if (text) {
-    socket.emit('send', text);
+    guardedSend(text);
   }
 
   msgInput.value = '';
@@ -673,7 +716,7 @@ fileInput.addEventListener('change', async () => {
     const json = await res.json();
     if (json && json.ok && json.file) {
       // send file message via socket
-      socket.emit('send', { type: 'file', file: json.file });
+      guardedSend({ type: 'file', file: json.file });
       messagesEl.scrollTop = messagesEl.scrollHeight;
       clearUnreadTitle();
     } else {
@@ -970,7 +1013,7 @@ function sendSticker(s) {
   if (!myName) return notify('请先登录');
   const ext = s.url.split('.').pop().toLowerCase();
   const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' };
-  socket.emit('send', { type: 'file', file: { url: s.url, name: s.name, size: 0, mimetype: mimeMap[ext] || 'image/png', isSticker: true } });
+  if (!guardedSend({ type: 'file', file: { url: s.url, name: s.name, size: 0, mimetype: mimeMap[ext] || 'image/png', isSticker: true } })) return;
   emojiPanel.style.display = 'none';
   emojiPanelOpen = false;
   messagesEl.scrollTop = messagesEl.scrollHeight;

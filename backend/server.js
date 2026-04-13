@@ -150,10 +150,16 @@ if (!fs.existsSync(ROOMS_DIR)) fs.mkdirSync(ROOMS_DIR, { recursive: true });
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR, { recursive: true });
 
+// Fix multer Latin-1 encoding for non-ASCII filenames
+function fixOriginalName(name) {
+  try { return Buffer.from(name, 'latin1').toString('utf8'); } catch (e) { return name; }
+}
+
 // multer storage config
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOADS_DIR),
   filename: (req, file, cb) => {
+    file.originalname = fixOriginalName(file.originalname);
     const ext = path.extname(file.originalname);
     const base = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_\u4e00-\u9fff-]/g, '_');
     const unique = Date.now() + '-' + crypto.randomBytes(4).toString('hex');
@@ -260,6 +266,7 @@ app.get('/stickers', (req, res) => {
 const stickerStorage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, STICKERS_UPLOADED_DIR),
   filename: (req, file, cb) => {
+    file.originalname = fixOriginalName(file.originalname);
     const ext = path.extname(file.originalname);
     const base = path.basename(file.originalname, ext).replace(/[^a-zA-Z0-9_\u4e00-\u9fff-]/g, '_');
     const unique = Date.now() + '-' + crypto.randomBytes(4).toString('hex');
