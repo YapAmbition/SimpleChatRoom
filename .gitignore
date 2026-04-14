@@ -4,3 +4,9 @@ backend/backend.log
 backend/data/
 
 .DS_Store
+
+# Compiled CLI binary
+cli/simple-chat-room/scripts/scr
+
+# Python cache
+__pycache__/
