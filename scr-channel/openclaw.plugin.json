@@ -1,0 +1,56 @@
+{
+  "id": "scr",
+  "version": "1.0.0",
+  "name": "SimpleChatRoom Channel",
+  "description": "Connect OpenClaw to SimpleChatRoom for messaging",
+  "kind": "channel",
+  "channels": ["scr"],
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "serverUrl": {
+        "type": "string",
+        "description": "SimpleChatRoom server URL, e.g. https://chat.example.com"
+      },
+      "room": {
+        "type": "string",
+        "description": "Room name to join, e.g. 聊天大厅"
+      },
+      "botName": {
+        "type": "string",
+        "description": "Bot username displayed in chat"
+      },
+      "roomPassword": {
+        "type": "string",
+        "description": "Room password (if the room is password-protected)"
+      },
+      "requireMention": {
+        "type": "boolean",
+        "default": false,
+        "description": "Only respond when bot is @mentioned"
+      },
+      "mentionPatterns": {
+        "type": "array",
+        "items": { "type": "string" },
+        "description": "Additional patterns that count as mentions"
+      },
+      "batchDebounceMs": {
+        "type": "number",
+        "default": 3000,
+        "description": "Wait this many ms after last message before flushing batch"
+      },
+      "batchMaxWaitMs": {
+        "type": "number",
+        "default": 10000,
+        "description": "Maximum wait time before force-flushing batch"
+      },
+      "responsePrefix": {
+        "type": "string",
+        "default": "",
+        "description": "Prefix added to bot responses"
+      }
+    },
+    "required": ["serverUrl", "room", "botName"],
+    "additionalProperties": false
+  }
+}
