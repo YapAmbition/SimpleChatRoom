@@ -337,7 +337,112 @@ body {
 }
 .message .meta strong { font-weight: 600; color: #444; font-size: 12px; }
 .message .meta .ts { font-size: 11px; color: #aaa; }
-.message .text { clear: both; margin-top: 2px; font-size: 14px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+.message .text { clear: both; margin-top: 2px; font-size: 14px; line-height: 1.55; word-break: break-word; }
+
+/* ===== Markdown Body Styles ===== */
+.markdown-body { white-space: normal; }
+.markdown-body p { margin: 0 0 0.4em 0; }
+.markdown-body p:last-child { margin-bottom: 0; }
+.markdown-body h1, .markdown-body h2, .markdown-body h3,
+.markdown-body h4, .markdown-body h5, .markdown-body h6 {
+  margin: 0.5em 0 0.3em 0;
+  line-height: 1.3;
+  font-weight: 700;
+  color: #1a1a2e;
+}
+.markdown-body h1 { font-size: 1.4em; }
+.markdown-body h2 { font-size: 1.25em; }
+.markdown-body h3 { font-size: 1.1em; }
+.markdown-body h4, .markdown-body h5, .markdown-body h6 { font-size: 1em; }
+.markdown-body h1:first-child, .markdown-body h2:first-child,
+.markdown-body h3:first-child, .markdown-body h4:first-child { margin-top: 0; }
+
+/* Inline code */
+.markdown-body code {
+  background: #f0f3f7;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  color: #d63384;
+}
+
+/* Code blocks */
+.markdown-body pre {
+  background: #1e1e2e;
+  color: #cdd6f4;
+  padding: 12px 14px;
+  border-radius: 8px;
+  overflow-x: auto;
+  margin: 0.5em 0;
+  line-height: 1.5;
+}
+.markdown-body pre code {
+  background: none;
+  padding: 0;
+  border-radius: 0;
+  font-size: 0.85em;
+  color: inherit;
+}
+
+/* Blockquote */
+.markdown-body blockquote {
+  margin: 0.4em 0;
+  padding: 4px 12px;
+  border-left: 3px solid #4fa3ff;
+  background: #f6f8fb;
+  color: #555;
+}
+.markdown-body blockquote p { margin: 0; }
+
+/* Lists */
+.markdown-body ul, .markdown-body ol {
+  margin: 0.3em 0;
+  padding-left: 1.8em;
+}
+.markdown-body li { margin: 0.15em 0; }
+
+/* Tables */
+.markdown-body table {
+  border-collapse: collapse;
+  margin: 0.5em 0;
+  font-size: 0.9em;
+  width: 100%;
+}
+.markdown-body th, .markdown-body td {
+  border: 1px solid #dce3eb;
+  padding: 6px 10px;
+  text-align: left;
+}
+.markdown-body th {
+  background: #f0f3f7;
+  font-weight: 600;
+}
+.markdown-body tr:nth-child(even) { background: #fafbfd; }
+
+/* Horizontal rule */
+.markdown-body hr {
+  border: none;
+  border-top: 1px solid #e4eaf0;
+  margin: 0.5em 0;
+}
+
+/* Links */
+.markdown-body a { color: #1e88ff; text-decoration: none; }
+.markdown-body a:hover { text-decoration: underline; }
+
+/* Images in markdown */
+.markdown-body img {
+  max-width: 100%;
+  border-radius: 6px;
+  margin: 0.3em 0;
+}
+
+/* Own message (green bubble) markdown adjustments */
+.message.me .markdown-body code { background: #c8e6b0; color: #8b3a62; }
+.message.me .markdown-body blockquote { background: #c8e6b0; border-left-color: #5ca632; }
+.message.me .markdown-body th { background: #c8e6b0; }
+.message.me .markdown-body tr:nth-child(even) { background: #d4f0c0; }
 
 /* Own messages (right side) */
 .message.me { justify-content: flex-end; }

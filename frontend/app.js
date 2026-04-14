@@ -319,9 +319,29 @@ function notify(text, ms = 2500) {
 
 function esc(s) { return String(s || '').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
 
-// Format message text for HTML: escape only (whitespace preserved via CSS white-space:pre-wrap)
+// Configure marked for chat messages
+(function() {
+  if (typeof marked !== 'undefined') {
+    marked.setOptions({
+      breaks: true,       // Convert \n to <br> (chat-friendly)
+      gfm: true,          // GitHub Flavored Markdown
+    });
+  }
+})();
+
+// Format message text for HTML: render Markdown with sanitization
 function formatText(s) {
-  return esc(s);
+  if (!s) return '';
+  // If marked or DOMPurify unavailable, fall back to plain escaped text
+  if (typeof marked === 'undefined' || typeof DOMPurify === 'undefined') {
+    return esc(s);
+  }
+  try {
+    const rawHtml = marked.parse(s);
+    return DOMPurify.sanitize(rawHtml);
+  } catch (e) {
+    return esc(s);
+  }
 }
 
 // Format file size for display
@@ -366,7 +386,7 @@ function renderBubbleContent(m) {
     fileHtml += `</a>`;
     return metaHtml + fileHtml;
   }
-  return metaHtml + `<div class="text">${formatText(m.text)}</div>`;
+  return metaHtml + `<div class="text markdown-body">${formatText(m.text)}</div>`;
 }
 
 function addMessage(m) {
