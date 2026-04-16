@@ -301,12 +301,38 @@ messagesEl.addEventListener('click', (e) => {
   }
   // Copy button
   const btn = e.target.closest('.copy-btn');
-  if (!btn) return;
-  const text = btn.getAttribute('data-copy') || '';
-  navigator.clipboard.writeText(text).then(() => {
-    btn.textContent = '已复制';
-    setTimeout(() => { btn.textContent = '复制'; }, 1500);
-  }).catch(() => { notify('复制失败'); });
+  if (btn) {
+    const text = btn.getAttribute('data-copy') || '';
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = '已复制';
+      setTimeout(() => { btn.textContent = '复制'; }, 1500);
+    }).catch(() => { notify('复制失败'); });
+    return;
+  }
+  // Raw/Markdown toggle button
+  const rawBtn = e.target.closest('.raw-btn');
+  if (rawBtn) {
+    const mode = rawBtn.getAttribute('data-mode');
+    const rawText = rawBtn.getAttribute('data-raw') || '';
+    const textEl = rawBtn.closest('.message').querySelector('.text');
+    if (!textEl) return;
+    if (mode === 'rendered') {
+      // Switch to raw text view
+      textEl.textContent = rawText;
+      textEl.classList.remove('markdown-body');
+      textEl.classList.add('raw-text');
+      rawBtn.textContent = '渲染';
+      rawBtn.setAttribute('data-mode', 'raw');
+    } else {
+      // Switch back to markdown rendered view
+      textEl.innerHTML = formatText(rawText);
+      textEl.classList.remove('raw-text');
+      textEl.classList.add('markdown-body');
+      rawBtn.textContent = '原文';
+      rawBtn.setAttribute('data-mode', 'rendered');
+    }
+    return;
+  }
 });
 
 function notify(text, ms = 2500) {
@@ -337,7 +363,19 @@ function formatText(s) {
     return esc(s);
   }
   try {
-    const rawHtml = marked.parse(s);
+    let text = s;
+
+    // Fix: unescape literal \n and \t (common in AI model responses)
+    // Preserve \\n → \n display, then convert \n → real newline
+    text = text.replace(/\\\\n/g, '\x00ESC_N\x00');
+    text = text.replace(/\\n/g, '\n');
+    text = text.replace(/\x00ESC_N\x00/g, '\\\\n');
+
+    text = text.replace(/\\\\t/g, '\x00ESC_T\x00');
+    text = text.replace(/\\t/g, '\t');
+    text = text.replace(/\x00ESC_T\x00/g, '\\\\t');
+
+    const rawHtml = marked.parse(text);
     return DOMPurify.sanitize(rawHtml);
   } catch (e) {
     return esc(s);
@@ -389,23 +427,32 @@ function renderBubbleContent(m) {
   return metaHtml + `<div class="text markdown-body">${formatText(m.text)}</div>`;
 }
 
-function addMessage(m) {
+// Build the DOM element for a single message (shared by addMessage & insertMessageAtTop)
+function createMessageElement(m) {
   const el = document.createElement('div');
-  const cls = (m.user === myName) ? 'message me' : 'message other';
-  el.className = cls;
-  // avatar column: copy button on top, avatar on bottom
+  el.className = (m.user === myName) ? 'message me' : 'message other';
+  // avatar column: copy button, optional raw toggle, avatar
   const avatarCol = document.createElement('div');
   avatarCol.className = 'avatar-col';
   const copyBtn = document.createElement('button');
   copyBtn.className = 'copy-btn';
   copyBtn.textContent = '复制';
   copyBtn.setAttribute('data-copy', m.text || '');
+  avatarCol.appendChild(copyBtn);
+  // raw/markdown toggle button (text messages only)
+  if (!(m.type === 'file' && m.file) && m.text) {
+    const rawBtn = document.createElement('button');
+    rawBtn.className = 'raw-btn';
+    rawBtn.textContent = '原文';
+    rawBtn.setAttribute('data-raw', m.text);
+    rawBtn.setAttribute('data-mode', 'rendered');
+    avatarCol.appendChild(rawBtn);
+  }
   const avatar = document.createElement('div');
   avatar.className = 'avatar';
   avatar.textContent = avatarChar(m.user);
   avatar.title = m.user || '';
   avatar.style.backgroundColor = hashStringToColor(m.user || '');
-  avatarCol.appendChild(copyBtn);
   avatarCol.appendChild(avatar);
   const bubble = document.createElement('div');
   bubble.className = 'bubble';
@@ -417,6 +464,11 @@ function addMessage(m) {
     el.appendChild(avatarCol);
     el.appendChild(bubble);
   }
+  return el;
+}
+
+function addMessage(m) {
+  const el = createMessageElement(m);
   // check if near bottom BEFORE appending the new message
   const nearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 100;
   messagesEl.appendChild(el);
@@ -426,32 +478,7 @@ function addMessage(m) {
 
 // insertMessageAtTop used when loading older messages
 function insertMessageAtTop(m) {
-  const el = document.createElement('div');
-  const cls = (m.user === myName) ? 'message me' : 'message other';
-  el.className = cls;
-  const avatarCol = document.createElement('div');
-  avatarCol.className = 'avatar-col';
-  const copyBtn = document.createElement('button');
-  copyBtn.className = 'copy-btn';
-  copyBtn.textContent = '复制';
-  copyBtn.setAttribute('data-copy', m.text || '');
-  const avatar = document.createElement('div');
-  avatar.className = 'avatar';
-  avatar.textContent = avatarChar(m.user);
-  avatar.title = m.user || '';
-  avatar.style.backgroundColor = hashStringToColor(m.user || '');
-  avatarCol.appendChild(copyBtn);
-  avatarCol.appendChild(avatar);
-  const bubble = document.createElement('div');
-  bubble.className = 'bubble';
-  bubble.innerHTML = renderBubbleContent(m);
-  if (m.user === myName) {
-    el.appendChild(bubble);
-    el.appendChild(avatarCol);
-  } else {
-    el.appendChild(avatarCol);
-    el.appendChild(bubble);
-  }
+  const el = createMessageElement(m);
   messagesEl.insertBefore(el, messagesEl.firstChild);
 }
 

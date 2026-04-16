@@ -300,6 +300,21 @@ body {
 .message:hover .copy-btn { opacity: 1; }
 .copy-btn:hover { color: #555; border-color: #d0dbe6; }
 
+/* Raw/Markdown toggle button */
+.raw-btn {
+  padding: 1px 6px;
+  font-size: 10px;
+  color: #ccc;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s;
+}
+.message:hover .raw-btn { opacity: 1; }
+.raw-btn:hover { color: #555; border-color: #d0dbe6; }
+
 /* Avatar */
 .avatar {
   width: 36px;
@@ -338,6 +353,15 @@ body {
 .message .meta strong { font-weight: 600; color: #444; font-size: 12px; }
 .message .meta .ts { font-size: 11px; color: #aaa; }
 .message .text { clear: both; margin-top: 2px; font-size: 14px; line-height: 1.55; word-break: break-word; }
+
+/* ===== Raw Text Styles ===== */
+.raw-text {
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'SFMono-Regular', Consolas, 'Liberation Mono', Menlo, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+}
 
 /* ===== Markdown Body Styles ===== */
 .markdown-body { white-space: normal; }
