@@ -82,6 +82,11 @@ function verifyRoomPassword(room, password) {
   }
 }
 
+// E2E: serve server's ECDH public key
+app.get('/e2e/pubkey', (req, res) => {
+  res.json({ pubkey: serverECDH.getPublicKey('base64') });
+});
+
 // GET /messages?room=ROOM&before=ISO&after=MSGID&limit=N
 app.get('/messages', (req, res) => {
   try {
@@ -110,6 +115,79 @@ app.get('/messages', (req, res) => {
 
 const DATA_DIR = path.join(__dirname, 'data');
 // per-room storage under data/rooms/<room>
+
+// ========== E2E Encryption (ECDH + AES-256-GCM) ==========
+const ECDH_KEY_FILE = path.join(DATA_DIR, 'server-ecdh.json');
+const serverECDH = crypto.createECDH('prime256v1');
+(function loadOrGenerateECDH() {
+  try {
+    if (fs.existsSync(ECDH_KEY_FILE)) {
+      const data = JSON.parse(fs.readFileSync(ECDH_KEY_FILE, 'utf8'));
+      serverECDH.setPrivateKey(Buffer.from(data.privateKey, 'base64'));
+      console.log('[e2e] loaded ECDH key pair from', ECDH_KEY_FILE);
+    } else {
+      serverECDH.generateKeys();
+      if (!fs.existsSync(DATA_DIR)) fs.mkdirSync(DATA_DIR, { recursive: true });
+      fs.writeFileSync(ECDH_KEY_FILE, JSON.stringify({
+        publicKey: serverECDH.getPublicKey('base64'),
+        privateKey: serverECDH.getPrivateKey('base64')
+      }), 'utf8');
+      console.log('[e2e] generated new ECDH key pair, saved to', ECDH_KEY_FILE);
+    }
+  } catch (e) {
+    console.error('[e2e] ECDH key init failed, generating ephemeral key:', e.message);
+    serverECDH.generateKeys();
+  }
+})();
+
+function e2eDeriveKey(sharedSecret) {
+  return Buffer.from(crypto.hkdfSync('sha256', sharedSecret, 'scr-e2e-salt', 'scr-e2e-aes-key', 32));
+}
+
+function serverEncrypt(keyBuf, plaintext) {
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', keyBuf, iv);
+  const enc = Buffer.concat([cipher.update(plaintext, 'utf8'), cipher.final()]);
+  const tag = cipher.getAuthTag();
+  return { ct: Buffer.concat([enc, tag]).toString('base64'), iv: iv.toString('base64') };
+}
+
+function serverDecrypt(keyBuf, ct64, iv64) {
+  const ct = Buffer.from(ct64, 'base64');
+  const iv = Buffer.from(iv64, 'base64');
+  const tag = ct.subarray(ct.length - 16);
+  const ciphertext = ct.subarray(0, ct.length - 16);
+  const decipher = crypto.createDecipheriv('aes-256-gcm', keyBuf, iv);
+  decipher.setAuthTag(tag);
+  return decipher.update(ciphertext, null, 'utf8') + decipher.final('utf8');
+}
+
+function emitEncrypted(socket, event, data) {
+  if (socket.data && socket.data.e2eKey) {
+    try {
+      const plain = JSON.stringify(data);
+      const enc = serverEncrypt(socket.data.e2eKey, plain);
+      socket.emit(event, { _enc: 1, ct: enc.ct, iv: enc.iv });
+    } catch (e) {
+      console.error('[e2e] encrypt failed for', event, e.message);
+      socket.emit(event, data);
+    }
+  } else {
+    socket.emit(event, data);
+  }
+}
+
+async function broadcastMessage(room, msg) {
+  try {
+    const sockets = await io.in(room).fetchSockets();
+    for (const s of sockets) {
+      emitEncrypted(s, 'message', msg);
+    }
+  } catch (e) {
+    console.error('[e2e] broadcastMessage failed, falling back:', e.message);
+    io.to(room).emit('message', msg);
+  }
+}
 
 function getRoomDir(room) {
   // Prefer looking up room index (room.json). Support both room id or display name.
@@ -716,7 +794,7 @@ app.post('/api/send', cliAuth, express.json(), (req, res) => {
       text
     };
     appendMessage(msg, room);
-    io.to(room).emit('message', msg);
+    broadcastMessage(room, msg);
     res.json({ ok: true, message: msg });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e) });
@@ -727,6 +805,21 @@ io.on('connection', (socket) => {
   console.log('client connected', socket.id);
   // presence map maintained globally
   if (!global.onlineMap) global.onlineMap = new Map();
+
+  // E2E: ECDH key exchange per browser connection
+  socket.on('e2e-exchange', (data, cb) => {
+    try {
+      if (!data || !data.pubkey) return cb && cb({ ok: false, error: 'missing pubkey' });
+      const clientPubBuf = Buffer.from(data.pubkey, 'base64');
+      const sharedSecret = serverECDH.computeSecret(clientPubBuf);
+      socket.data.e2eKey = e2eDeriveKey(sharedSecret);
+      console.log('[e2e] key exchange complete for', socket.id);
+      cb && cb({ ok: true });
+    } catch (e) {
+      console.error('[e2e] key exchange failed for', socket.id, e.message);
+      cb && cb({ ok: false, error: 'key exchange failed' });
+    }
+  });
 
   socket.on('login', (username, cb) => {
     try {
@@ -752,7 +845,7 @@ io.on('connection', (socket) => {
   const msgs = loadAllMessages(socket.data.room, HISTORY_LIMIT) || [];
   // ensure each message has the room id so clients can filter reliably
   msgs.forEach(m => { if (m) m.room = socket.data.room; });
-  socket.emit('history', msgs);
+  emitEncrypted(socket, 'history', msgs);
       // register presence (room-aware)
       if (!global.roomMembers) global.roomMembers = new Map();
   const members = global.roomMembers.get(socket.data.room) || new Set();
@@ -798,7 +891,7 @@ io.on('connection', (socket) => {
   const msgs = loadAllMessages(ent.id, HISTORY_LIMIT) || [];
   // tag messages with canonical room id for client-side filtering
   msgs.forEach(m => { if (m) m.room = ent.id; });
-  socket.emit('history', msgs);
+  emitEncrypted(socket, 'history', msgs);
   // update roomMembers
   if (!global.roomMembers) global.roomMembers = new Map();
   const members = global.roomMembers.get(ent.id) || new Set();
@@ -839,6 +932,17 @@ io.on('connection', (socket) => {
   socket.on('send', (data) => {
     const username = socket.data.username || '匿名';
     const room = socket.data.room || '聊天大厅';
+    // E2E: decrypt if encrypted envelope
+    let payload = data;
+    if (data && data._enc === 1 && socket.data.e2eKey) {
+      try {
+        const plain = serverDecrypt(socket.data.e2eKey, data.ct, data.iv);
+        try { payload = JSON.parse(plain); } catch (_) { payload = plain; }
+      } catch (e) {
+        console.error('[e2e] decrypt failed in send handler:', e.message);
+        return; // drop message if decryption fails
+      }
+    }
     const msg = {
       id: Date.now() + '-' + Math.random().toString(36).slice(2, 9),
       user: username,
@@ -846,16 +950,16 @@ io.on('connection', (socket) => {
       room: room
     };
     // support both plain text and file messages
-    if (typeof data === 'object' && data !== null && data.type === 'file') {
+    if (typeof payload === 'object' && payload !== null && payload.type === 'file') {
       msg.type = 'file';
-      msg.file = { url: data.file.url, name: data.file.name, size: data.file.size, mimetype: data.file.mimetype };
-      if (data.file.isSticker) msg.file.isSticker = true;
-      msg.text = `[文件] ${data.file.name}`;
+      msg.file = { url: payload.file.url, name: payload.file.name, size: payload.file.size, mimetype: payload.file.mimetype };
+      if (payload.file.isSticker) msg.file.isSticker = true;
+      msg.text = `[文件] ${payload.file.name}`;
     } else {
-      msg.text = typeof data === 'string' ? data : String(data || '');
+      msg.text = typeof payload === 'string' ? payload : String(payload || '');
     }
     appendMessage(msg, room);
-    io.to(room).emit('message', msg);
+    broadcastMessage(room, msg);
   });
 
   socket.on('disconnect', () => {
@@ -1031,7 +1135,7 @@ app.delete('/admin/rooms/:id', adminAuth, async (req, res) => {
         const msgs = loadAllMessages(mainRoomId, HISTORY_LIMIT) || [];
         msgs.forEach(m => { if (m) m.room = mainRoomId; });
         s.emit('room-deleted', { roomId: id, roomName: entry.name });
-        s.emit('history', msgs);
+        emitEncrypted(s, 'history', msgs);
       }
       const mainMembers = global.roomMembers.get(mainRoomId) || new Set();
       const mainUsers = Array.from(mainMembers);
@@ -1077,7 +1181,9 @@ app.post('/admin/rooms/:id/clear', adminAuth, (req, res) => {
       for (const f of files) fs.unlinkSync(path.join(dir, f));
     } catch (e) { /* ignore */ }
 
-    io.to(id).emit('history', []);
+    io.in(id).fetchSockets().then(sockets => {
+      for (const s of sockets) emitEncrypted(s, 'history', []);
+    }).catch(() => { io.to(id).emit('history', []); });
     res.json({ ok: true });
   } catch (e) {
     res.status(500).json({ ok: false, error: String(e) });

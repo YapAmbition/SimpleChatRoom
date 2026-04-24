@@ -3,6 +3,121 @@
 const BASE_PATH = window.location.pathname.replace(/\/+$/, '');
 const socket = io({ path: BASE_PATH + '/socket.io' });
 
+// ========== E2E Encryption (ECDH P-256 + AES-256-GCM) ==========
+let e2eKey = null;      // CryptoKey for AES-256-GCM (null = not established)
+let e2eEnabled = false;  // true after successful key exchange
+
+function b64ToBytes(b64) {
+  const bin = atob(b64);
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  return bytes;
+}
+
+function bytesToB64(buf) {
+  const bytes = new Uint8Array(buf);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return btoa(bin);
+}
+
+async function e2eEncrypt(plaintext) {
+  if (!e2eKey) throw new Error('e2e key not established');
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const enc = await crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    e2eKey,
+    new TextEncoder().encode(plaintext)
+  );
+  return { _enc: 1, ct: bytesToB64(enc), iv: bytesToB64(iv) };
+}
+
+async function e2eDecrypt(envelope) {
+  if (!e2eKey) throw new Error('e2e key not established');
+  const ct = b64ToBytes(envelope.ct);
+  const iv = b64ToBytes(envelope.iv);
+  const dec = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
+    e2eKey,
+    ct
+  );
+  return new TextDecoder().decode(dec);
+}
+
+async function performKeyExchange() {
+  try {
+    // 1. Fetch server ECDH public key
+    const res = await fetch(BASE_PATH + '/e2e/pubkey');
+    const json = await res.json();
+    if (!json || !json.pubkey) throw new Error('no server pubkey');
+
+    // 2. Generate ephemeral ECDH key pair (P-256)
+    const keyPair = await crypto.subtle.generateKey(
+      { name: 'ECDH', namedCurve: 'P-256' },
+      true,
+      ['deriveBits']
+    );
+
+    // 3. Export client public key (raw uncompressed point)
+    const clientPubRaw = await crypto.subtle.exportKey('raw', keyPair.publicKey);
+    const clientPubB64 = bytesToB64(clientPubRaw);
+
+    // 4. Import server public key
+    const serverPubBytes = b64ToBytes(json.pubkey);
+    const serverPubKey = await crypto.subtle.importKey(
+      'raw',
+      serverPubBytes,
+      { name: 'ECDH', namedCurve: 'P-256' },
+      false,
+      []
+    );
+
+    // 5. Derive shared secret via ECDH
+    const sharedBits = await crypto.subtle.deriveBits(
+      { name: 'ECDH', public: serverPubKey },
+      keyPair.privateKey,
+      256
+    );
+
+    // 6. HKDF: shared secret -> AES-256-GCM key
+    const hkdfKey = await crypto.subtle.importKey(
+      'raw',
+      sharedBits,
+      'HKDF',
+      false,
+      ['deriveKey']
+    );
+
+    e2eKey = await crypto.subtle.deriveKey(
+      {
+        name: 'HKDF',
+        hash: 'SHA-256',
+        salt: new TextEncoder().encode('scr-e2e-salt'),
+        info: new TextEncoder().encode('scr-e2e-aes-key')
+      },
+      hkdfKey,
+      { name: 'AES-GCM', length: 256 },
+      false,
+      ['encrypt', 'decrypt']
+    );
+
+    // 7. Send client public key to server for server-side key derivation
+    await new Promise((resolve, reject) => {
+      socket.emit('e2e-exchange', { pubkey: clientPubB64 }, (resp) => {
+        if (resp && resp.ok) resolve();
+        else reject(new Error((resp && resp.error) || 'e2e exchange failed'));
+      });
+    });
+
+    e2eEnabled = true;
+    console.log('[e2e] key exchange complete');
+  } catch (e) {
+    console.error('[e2e] key exchange failed:', e);
+    e2eKey = null;
+    e2eEnabled = false;
+  }
+}
+
 // Connection status indicator
 const connStatusEl = document.getElementById('connStatus');
 const connBanner = document.getElementById('connBanner');
@@ -22,8 +137,10 @@ function setConnStatus(state) {
 setConnStatus('connecting');
 
 // Auto re-login and re-join room after reconnect
-socket.on('connect', () => {
+socket.on('connect', async () => {
   setConnStatus('connected');
+  // Perform E2E key exchange on every new connection
+  await performKeyExchange();
   if (myName && currentRoomId) {
     socket.emit('login', myName, (res) => {
       if (res && res.ok) {
@@ -683,10 +800,21 @@ joinRoomBtn.addEventListener('click', async () => {
 });
 
 // Guarded send: only emit when connected, otherwise notify user
-function guardedSend(data) {
+// E2E: encrypts payload before sending when key exchange is established
+async function guardedSend(data) {
   if (!socket.connected) {
     notify('连接已断开，无法发送');
     return false;
+  }
+  if (e2eEnabled && e2eKey) {
+    try {
+      const plain = typeof data === 'string' ? data : JSON.stringify(data);
+      const envelope = await e2eEncrypt(plain);
+      socket.emit('send', envelope);
+      return true;
+    } catch (e) {
+      console.error('[e2e] encrypt failed, sending plaintext:', e);
+    }
   }
   socket.emit('send', data);
   return true;
@@ -710,7 +838,7 @@ sendBtn.addEventListener('click', async () => {
       const res = await fetch(BASE_PATH + '/upload', { method: 'POST', body: formData });
       const json = await res.json();
       if (json && json.ok && json.file) {
-        guardedSend({ type: 'file', file: json.file });
+        await guardedSend({ type: 'file', file: json.file });
       } else {
         notify(json && json.error ? json.error : '图片上传失败');
       }
@@ -725,7 +853,7 @@ sendBtn.addEventListener('click', async () => {
 
   // send text if any
   if (text) {
-    guardedSend(text);
+    await guardedSend(text);
   }
 
   msgInput.value = '';
@@ -763,7 +891,7 @@ fileInput.addEventListener('change', async () => {
     const json = await res.json();
     if (json && json.ok && json.file) {
       // send file message via socket
-      guardedSend({ type: 'file', file: json.file });
+      await guardedSend({ type: 'file', file: json.file });
       messagesEl.scrollTop = messagesEl.scrollHeight;
       clearUnreadTitle();
     } else {
@@ -1056,11 +1184,11 @@ function renderStickers(stickers) {
   stickerGrid.appendChild(uploadBtn);
 }
 
-function sendSticker(s) {
+async function sendSticker(s) {
   if (!myName) return notify('请先登录');
   const ext = s.url.split('.').pop().toLowerCase();
   const mimeMap = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif', webp: 'image/webp', svg: 'image/svg+xml' };
-  if (!guardedSend({ type: 'file', file: { url: s.url, name: s.name, size: 0, mimetype: mimeMap[ext] || 'image/png', isSticker: true } })) return;
+  if (!(await guardedSend({ type: 'file', file: { url: s.url, name: s.name, size: 0, mimetype: mimeMap[ext] || 'image/png', isSticker: true } }))) return;
   emojiPanel.style.display = 'none';
   emojiPanelOpen = false;
   messagesEl.scrollTop = messagesEl.scrollHeight;
@@ -1162,7 +1290,18 @@ socket.on('rooms-updated', () => {
   loadRooms();
 });
 
-socket.on('history', (msgs) => {
+socket.on('history', async (data) => {
+  // E2E: decrypt if encrypted envelope
+  let msgs = data;
+  if (data && data._enc === 1 && e2eKey) {
+    try {
+      const plain = await e2eDecrypt(data);
+      msgs = JSON.parse(plain);
+    } catch (e) {
+      console.error('[e2e] decrypt history failed:', e);
+      return;
+    }
+  }
   messagesEl.innerHTML = '';
   msgs.forEach(addMessage);
   // set oldestTs for pagination
@@ -1171,7 +1310,18 @@ socket.on('history', (msgs) => {
   messagesEl.scrollTop = messagesEl.scrollHeight;
 });
 
-socket.on('message', (m) => {
+socket.on('message', async (data) => {
+  // E2E: decrypt if encrypted envelope
+  let m = data;
+  if (data && data._enc === 1 && e2eKey) {
+    try {
+      const plain = await e2eDecrypt(data);
+      m = JSON.parse(plain);
+    } catch (e) {
+      console.error('[e2e] decrypt message failed:', e);
+      return;
+    }
+  }
   // only show messages for current room (compare with id or name)
   const roomMatch = m.room && (m.room === currentRoomId || m.room === currentRoomName);
   if (m.room && !roomMatch) return;
